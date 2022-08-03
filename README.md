@@ -6,9 +6,9 @@ Dependencies:
 [MEGAHIT](https://github.com/voutcn/megahit)  
 [BWA](http://bio-bwa.sourceforge.net)  
 [SAMTools](https://github.com/samtools/)  
-BEDTools(https://bedtools.readthedocs.io/en/latest/)  
-Picard(https://broadinstitute.github.io/picard/)  
-MMSeqs2(https://github.com/soedinglab/MMseqs2)  
+[BEDTools](https://bedtools.readthedocs.io/en/latest/)  
+[Picard](https://broadinstitute.github.io/picard/)  
+[MMSeqs2](https://github.com/soedinglab/MMseqs2)  
 [GNU Parallel](https://www.gnu.org/software/parallel/)  
 
 ![MG-Clust workflow](./figures/MG-Clust.png)
