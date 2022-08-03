@@ -10,6 +10,7 @@ Dependencies:
 [BEDTools](https://bedtools.readthedocs.io/en/latest/)  
 [Picard](https://broadinstitute.github.io/picard/)  
 [MMSeqs2](https://github.com/soedinglab/MMseqs2)  
+[FragGeneScanRs](https://github.com/unipept/FragGeneScanRs)
 [GNU Parallel](https://www.gnu.org/software/parallel/)  
 
 To see the help run ` ./mg-clust.bash --help`
