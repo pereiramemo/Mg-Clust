@@ -12,6 +12,7 @@ Dependencies:
 [MMSeqs2](https://github.com/soedinglab/MMseqs2)  
 [GNU Parallel](https://www.gnu.org/software/parallel/)  
 
+´´´
 Usage: ./mg-clust.bash <options>
 --help                          print this help
 --assem_dir CHAR                directory with previously computed assemblies (format dirname/SAMPLE_NAME/SAMPLE_NAME.contigs.fa)
@@ -37,6 +38,7 @@ Usage: ./mg-clust.bash <options>
 --train_file_name               train file name used to run FragGeneScan (default illumina_1)
 --thres_range NUM,NUM           minimum and maximum clustering thresholds separated by comma (default 0.7,0.9)
 --thres_step NUM                threshold sequence step (default 0.1)
+´´´
 
 ![MG-Clust workflow](./figures/MG-Clust.png)
 
