@@ -44,5 +44,3 @@ Usage: ./mg-clust.bash <options>
 ```
 
 ![MG-Clust workflow](./figures/MG-Clust.png)
-
-
