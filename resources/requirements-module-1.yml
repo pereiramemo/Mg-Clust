@@ -1,0 +1,11 @@
+name: mg-clust-module-1
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.8
+  - megahit=1.2.9
+  - bwa=0.7.19
+  - samtools=1.23
+  - picard=3.4.0
