@@ -95,7 +95,7 @@ def parse_args() -> argparse.Namespace:
     
     return parser.parse_args()
 
-# 2.3 Ensure a file exists; exit with error if not
+# 2.4 Ensure a file exists; exit with error if not
 def ensure_file(path: str, label: str) -> None:
     if not os.path.isfile(path):
         print(f"{label} is not a real files", file=sys.stderr)
