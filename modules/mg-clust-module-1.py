@@ -23,6 +23,11 @@ import subprocess
 import sys
 from typing import List, Optional
 
+megahit = "megahit"
+bwa = "bwa"
+samtools = "samtools"
+picard = "picard"  # use picard wrapper instead of java -jar
+
 ###############################################################################
 # 2. Define utility functions
 ###############################################################################
@@ -43,7 +48,14 @@ def run(cmd: List[str], stdout_path: Optional[str] = None) -> None:
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(proc.returncode, cmd)
 
-# 2.2 Parse command-line arguments
+# 2.2 Check that required tools are available on PATH
+def check_tools(tools: List[str]) -> None:
+    missing = [t for t in tools if subprocess.run(["which", t], capture_output=True).returncode != 0]
+    if missing:
+        print(f"Missing tools: {', '.join(missing)}", file=sys.stderr)
+        sys.exit(1)
+
+# 2.3 Parse command-line arguments
 def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(
@@ -94,13 +106,8 @@ def ensure_file(path: str, label: str) -> None:
 ###############################################################################
 
 def main() -> None:
-    # Fail early on command failures by checking return codes
-    # Tools are expected to be available on PATH via the active conda env
-    megahit = "megahit"
-    bwa = "bwa"
-    samtools = "samtools"
-    picard = "picard"  # use picard wrapper instead of java -jar
 
+    check_tools([megahit, bwa, samtools, picard])
     args = parse_args()
 
     ###########################################################################
