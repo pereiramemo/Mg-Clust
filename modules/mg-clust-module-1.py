@@ -32,7 +32,10 @@ picard = "picard"  # use picard wrapper instead of java -jar
 # 2. Define utility functions
 ###############################################################################
 
+###############################################################################
 # 2.1 Run a command and check return code; optionally redirect stdout to file
+###############################################################################
+
 def run(cmd: List[str], stdout_path: Optional[str] = None) -> None:
     """Run a command, stream output or redirect to file, and fail on non-zero return code."""
     try:
@@ -48,14 +51,20 @@ def run(cmd: List[str], stdout_path: Optional[str] = None) -> None:
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(proc.returncode, cmd)
 
+###############################################################################
 # 2.2 Check that required tools are available on PATH
+###############################################################################
+
 def check_tools(tools: List[str]) -> None:
     missing = [t for t in tools if subprocess.run(["which", t], capture_output=True).returncode != 0]
     if missing:
         print(f"Missing tools: {', '.join(missing)}", file=sys.stderr)
         sys.exit(1)
 
+###############################################################################
 # 2.3 Parse command-line arguments
+###############################################################################
+
 def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(
@@ -95,7 +104,10 @@ def parse_args() -> argparse.Namespace:
     
     return parser.parse_args()
 
+###############################################################################
 # 2.4 Ensure a file exists; exit with error if not
+###############################################################################
+
 def ensure_file(path: str, label: str) -> None:
     if not os.path.isfile(path):
         print(f"{label} is not a real files", file=sys.stderr)
