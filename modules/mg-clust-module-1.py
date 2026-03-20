@@ -110,7 +110,7 @@ def parse_args() -> argparse.Namespace:
 
 def ensure_file(path: str, label: str) -> None:
     if not os.path.isfile(path):
-        print(f"{label} is not a real files", file=sys.stderr)
+        print(f"{label} is not a real file", file=sys.stderr)
         sys.exit(1)
 
 ###############################################################################
