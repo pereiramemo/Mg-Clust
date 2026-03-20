@@ -5,5 +5,5 @@ channels:
   - defaults
 dependencies:
   - python>=3.8
-  - fraggenescan
-  - bedtools
+  - frag_gene_scan_rs=1.1.0
+  - bedtools=2.31.1
