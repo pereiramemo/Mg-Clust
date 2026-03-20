@@ -268,7 +268,7 @@ fi
 # convert to bam and filter high-quality primary alignments
 # flags taken from https://broadinstitute.github.io/picard/explain-flags.html
 # secondary alignments are moved; however this makes very little difference
-# ORFs coverage using F4 vs F260 flags had a MSE=0.00486  and Pearson cor 0.997 (same toydataset)
+# ORFs coverage using F4 vs F260 flags had a MSE=0.00486 and Pearson cor 0.997 (same toydataset)
 
 "${samtools}" view \
 -@ "${NSLOTS}" \
