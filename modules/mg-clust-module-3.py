@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-Python rewrite of mg-clust_module-3.bash
+mg-clust module 3: Concatenation and formatting of ORFs fasta files and coverage tables.
 
-Replicates the original behavior assuming execution inside the conda environment
-"mg-clust-module-3" (or equivalent) where dependencies are available on PATH.
+Assumes execution inside the conda environment "mg-clust-module-3" (or equivalent)
+where dependencies are available on PATH.
 
-- Accepts the same CLI options
-- Executes bbduk, mmseqs with equivalent parameters
-- Performs the same filesystem operations and concatenation
+- Concatenates ORF protein sequences from all samples, prefixing each header with the sample name
+- Filters ORFs by minimum length using bbduk
+- Creates an MMseqs2 sequence database from the filtered ORFs
+- Concatenates per-sample mean coverage tables, prefixing each ORF ID with the sample name
+- Concatenates per-sample reads coverage tables, prefixing each ORF ID with the sample name
 """
 
 ###############################################################################
@@ -24,14 +26,6 @@ from typing import List, Optional
 
 bbduk = "bbduk.sh"
 mmseqs = "mmseqs"
-
-# Test values for development/debugging using test/data
-TEST_VALUES = {
-    "input_dir": "/home/epereira/workspace/repositories/tools/Mg-Clust/test/test_output",
-    "output_dir": "/home/epereira/workspace/repositories/tools/Mg-Clust/test/test_output/output-3",
-    "nslots": 4,
-    "min_orf_length": 60,
-}
 
 ###############################################################################
 # 2. Define utility functions
@@ -77,20 +71,20 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--help", action="help", help="print this help")
 
-    parser.add_argument("--input_dir", dest="input_dir", default=TEST_VALUES["input_dir"],
+    parser.add_argument("--input_dir", dest="input_dir", required=True,
         help="input dir where to find the ORF fasta files and coverage tables")
-    
-    parser.add_argument("--nslots", dest="nslots", type=int, default=TEST_VALUES["nslots"],
+
+    parser.add_argument("--nslots", dest="nslots", type=int, default=4,
         help="number of threads used (default: 4)")
-    
-    parser.add_argument("--min_orf_length", dest="min_orf_length", type=int, default=TEST_VALUES["min_orf_length"],
+
+    parser.add_argument("--min_orf_length", dest="min_orf_length", type=int, default=60,
         help="minimum length of ORFs (amino acids); ORFs shorter than this will be discarded (default: 60)")
-    
-    parser.add_argument("--output_dir", dest="output_dir", default=TEST_VALUES["output_dir"],
+
+    parser.add_argument("--output_dir", dest="output_dir", required=True,
         help="directory to output generated data")
-    
-    parser.add_argument("--overwrite", dest="overwrite", action="store_true", default=TEST_VALUES["overwrite"],
-        help="overwrite previous folder if present (default: True)")
+
+    parser.add_argument("--overwrite", dest="overwrite", action="store_true", default=False,
+        help="overwrite previous folder if present (default: False)")
 
     return parser.parse_args()
 
@@ -151,29 +145,32 @@ def main() -> None:
 
     concat_orfs = os.path.join(args.output_dir, "orfs.faa")
 
-    # Find all *_orfs.faa files in subdirectories
+    # Find and concat all *_orfs.faa files in subdirectories
     orf_files = glob.glob(os.path.join(args.input_dir, "*", "*_orfs.faa"))
 
     if not orf_files:
         print(f"No ORF files found in {args.input_dir}", file=sys.stderr)
         sys.exit(1)
 
-    try:
-        with open(concat_orfs, "w", encoding="utf-8") as out_fh:
-            for orf_file in orf_files:
-                sample = os.path.basename(orf_file).replace("_orfs.faa", "")
+    open(concat_orfs, "w").close()  # create/clear the output file
 
-                # Read file and prefix headers with sample name
-                with open(orf_file, "r", encoding="utf-8", errors="ignore") as in_fh:
-                    for line in in_fh:
-                        if line.startswith(">"):
-                            # Add sample prefix to header
-                            out_fh.write(f">{sample}-{line[1:]}")
-                        else:
-                            out_fh.write(line)
-    except Exception as exc:
-        print(f"concat orf files failed: {exc}", file=sys.stderr)
-        sys.exit(1)
+    for orf_file in orf_files:
+        # sample_name is the filename without the "_orfs.faa" suffix
+        # set when running FragGeneScanRs in mg-clust-module-2 with the -o argument
+        sample_name = os.path.basename(orf_file).replace("_orfs.faa", "")
+
+        try:
+            with open(concat_orfs, "a") as out_fh:
+                # here sed is used instead of python to reduce computation time
+                proc = subprocess.run(
+                    ["sed", f"s/^>/>{ sample_name}-/", orf_file],
+                    stdout=out_fh, check=False)
+            if proc.returncode != 0:
+                raise subprocess.CalledProcessError(proc.returncode, proc.args)
+            
+        except subprocess.CalledProcessError:
+            print(f"prefixing headers in {orf_file} failed", file=sys.stderr)
+            sys.exit(1)
 
     ###########################################################################
     # 3.5 Filter ORFs by length
@@ -224,7 +221,7 @@ def main() -> None:
 
     meancov_table = os.path.join(args.output_dir, "orfs_meancov.tsv")
 
-    # Find all *_orfs_meancov.tsv files in subdirectories
+    # Find and concat all *_orfs_meancov.tsv files in subdirectories
     meancov_files = glob.glob(os.path.join(args.input_dir, "*", "*_orfs_meancov.tsv"))
 
     if not meancov_files:
@@ -234,18 +231,20 @@ def main() -> None:
     try:
         with open(meancov_table, "w", encoding="utf-8") as out_fh:
             for meancov_file in meancov_files:
-                sample = os.path.basename(meancov_file).replace("_orfs_meancov.tsv", "")
 
-                # Read coverage file and reformat
+                # sample_name is the filename without the "_orfs_meancov.tsv" suffix
+                # set when running bedtools in mg-clust-module-2.
+                sample_name = os.path.basename(meancov_file).replace("_orfs_meancov.tsv", "")
+
                 with open(meancov_file, "r", encoding="utf-8") as in_fh:
                     for line in in_fh:
                         parts = line.strip().split("\t")
-                        if len(parts) >= 4:
+                        if len(parts) >= 6:
                             orf_id = parts[4]
                             coverage = parts[5]
 
-                            # Format: SAMPLE-contig_id_start_end<tab>mean_coverage
-                            out_fh.write(f"{sample}-{orf_id}\t{coverage}\n")
+                            # Format: SAMPLE-orf_id<tab>mean_coverage
+                            out_fh.write(f"{sample_name}-{orf_id}\t{coverage}\n")
     except Exception as exc:
         print(f"concat and format coverage table failed: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -256,7 +255,7 @@ def main() -> None:
 
     readscov_table = os.path.join(args.output_dir, "orfs_readscov.tsv")
 
-    # Find all *_orfs_readscov.tsv files in subdirectories
+    # Find and concat all *_orfs_readscov.tsv files in subdirectories
     readscov_files = glob.glob(os.path.join(args.input_dir, "*", "*_orfs_readscov.tsv"))
 
     if not readscov_files:
@@ -266,19 +265,17 @@ def main() -> None:
     try:
         with open(readscov_table, "w", encoding="utf-8") as out_fh:
             for readscov_file in readscov_files:
-                sample = os.path.basename(readscov_file).replace("_orfs_readscov.tsv", "")
+                sample_name = os.path.basename(readscov_file).replace("_orfs_readscov.tsv", "")
 
-                # Read coverage file and reformat
                 with open(readscov_file, "r", encoding="utf-8") as in_fh:
                     for line in in_fh:
                         parts = line.strip().split("\t")
-                        if len(parts) >= 4:
+                        if len(parts) >= 6:
                             orf_id = parts[4]
                             coverage = parts[5]
 
-                            # Format: SAMPLE-contig_id_start_end<tab>reads_coverage
-                            out_fh.write(f"{sample}-{orf_id}\t{coverage}\n")
-
+                            # Format: SAMPLE-orf_id<tab>reads_coverage
+                            out_fh.write(f"{sample_name}-{orf_id}\t{coverage}\n")
     except Exception as exc:
         print(f"concat and format reads coverage table failed: {exc}", file=sys.stderr)
         sys.exit(1)
