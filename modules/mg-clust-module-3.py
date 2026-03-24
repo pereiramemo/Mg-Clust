@@ -17,7 +17,6 @@ where dependencies are available on PATH.
 ###############################################################################
 
 import argparse
-import glob
 import sys, os
 import subprocess
 import shutil
@@ -42,8 +41,14 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--help", action="help", help="print this help")
 
-    parser.add_argument("--input_dir", dest="input_dir", required=True,
-        help="input dir where to find the ORF fasta files and coverage tables")
+    parser.add_argument("--orf_files", dest="orf_files", required=True, nargs="+",
+        help="list of per-sample ORF fasta files (*_orfs.faa)")
+
+    parser.add_argument("--meancov_files", dest="meancov_files", required=True, nargs="+",
+        help="list of per-sample mean coverage tables (*_orfs_meancov.tsv)")
+
+    parser.add_argument("--readscov_files", dest="readscov_files", required=True, nargs="+",
+        help="list of per-sample reads coverage tables (*_orfs_readscov.tsv)")
 
     parser.add_argument("--nslots", dest="nslots", type=int, default=4,
         help="number of threads used (default: 4)")
@@ -67,15 +72,6 @@ def main() -> None:
 
     check_tools([bbduk, mmseqs])
     args = parse_args()
-
-    ###########################################################################
-    # 3.1. Check mandatory files
-    ###########################################################################
-
-    # Check that input directory exists
-    if not os.path.isdir(args.input_dir):
-        print(f"Input directory {args.input_dir} does not exist", file=sys.stderr)
-        sys.exit(1)
 
     ###########################################################################
     # 3.2. Check output directory
@@ -107,16 +103,9 @@ def main() -> None:
 
     concat_orfs = os.path.join(args.output_dir, "orfs.faa")
 
-    # Find and concat all *_orfs.faa files in subdirectories
-    orf_files = glob.glob(os.path.join(args.input_dir, "*", "*_orfs.faa"))
-
-    if not orf_files:
-        print(f"No ORF files found in {args.input_dir}", file=sys.stderr)
-        sys.exit(1)
-
     open(concat_orfs, "w").close()  # create/clear the output file
 
-    for orf_file in orf_files:
+    for orf_file in args.orf_files:
         # sample_name is the filename without the "_orfs.faa" suffix
         # set when running FragGeneScanRs in mg-clust-module-2 with the -o argument
         sample_name = os.path.basename(orf_file).replace("_orfs.faa", "")
@@ -183,16 +172,9 @@ def main() -> None:
 
     meancov_table = os.path.join(args.output_dir, "orfs_meancov.tsv")
 
-    # Find and concat all *_orfs_meancov.tsv files in subdirectories
-    meancov_files = glob.glob(os.path.join(args.input_dir, "*", "*_orfs_meancov.tsv"))
-
-    if not meancov_files:
-        print(f"No coverage files found in {args.input_dir}", file=sys.stderr)
-        sys.exit(1)
-
     try:
         with open(meancov_table, "w", encoding="utf-8") as out_fh:
-            for meancov_file in meancov_files:
+            for meancov_file in args.meancov_files:
 
                 # sample_name is the filename without the "_orfs_meancov.tsv" suffix
                 # set when running bedtools in mg-clust-module-2.
@@ -217,16 +199,9 @@ def main() -> None:
 
     readscov_table = os.path.join(args.output_dir, "orfs_readscov.tsv")
 
-    # Find and concat all *_orfs_readscov.tsv files in subdirectories
-    readscov_files = glob.glob(os.path.join(args.input_dir, "*", "*_orfs_readscov.tsv"))
-
-    if not readscov_files:
-        print(f"No reads coverage files found in {args.input_dir}", file=sys.stderr)
-        sys.exit(1)
-
     try:
         with open(readscov_table, "w", encoding="utf-8") as out_fh:
-            for readscov_file in readscov_files:
+            for readscov_file in args.readscov_files:
                 sample_name = os.path.basename(readscov_file).replace("_orfs_readscov.tsv", "")
 
                 with open(readscov_file, "r", encoding="utf-8") as in_fh:
