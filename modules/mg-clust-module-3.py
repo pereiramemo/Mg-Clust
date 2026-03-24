@@ -163,7 +163,7 @@ def main() -> None:
             with open(concat_orfs, "a") as out_fh:
                 # here sed is used instead of python to reduce computation time
                 proc = subprocess.run(
-                    ["sed", f"s/^>/>{ sample_name}-/", orf_file],
+                    ["sed", f"s/^>/>{ sample_name}|/", orf_file],
                     stdout=out_fh, check=False)
             if proc.returncode != 0:
                 raise subprocess.CalledProcessError(proc.returncode, proc.args)
@@ -243,8 +243,8 @@ def main() -> None:
                             orf_id = parts[4]
                             coverage = parts[5]
 
-                            # Format: SAMPLE-orf_id<tab>mean_coverage
-                            out_fh.write(f"{sample_name}-{orf_id}\t{coverage}\n")
+                            # Format: sample_name<tab>orf_id<tab>mean_coverage
+                            out_fh.write(f"{sample_name}\t{orf_id}\t{coverage}\n")
     except Exception as exc:
         print(f"concat and format coverage table failed: {exc}", file=sys.stderr)
         sys.exit(1)
@@ -274,8 +274,8 @@ def main() -> None:
                             orf_id = parts[4]
                             coverage = parts[5]
 
-                            # Format: SAMPLE-orf_id<tab>reads_coverage
-                            out_fh.write(f"{sample_name}-{orf_id}\t{coverage}\n")
+                            # Format: sample_name<tab>orf_id<tab>reads_coverage
+                            out_fh.write(f"{sample_name}\t{orf_id}\t{coverage}\n")
     except Exception as exc:
         print(f"concat and format reads coverage table failed: {exc}", file=sys.stderr)
         sys.exit(1)

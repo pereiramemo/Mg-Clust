@@ -16,12 +16,11 @@ Replicates the original behavior assuming execution inside the conda environment
 
 import argparse
 import os
-import re
 import shutil
 import subprocess
 import sys
-from collections import defaultdict
-from typing import List, Optional
+import pandas as pd
+from typing import List, Optional 
 
 mmseqs = "mmseqs"
 
@@ -89,9 +88,6 @@ def parse_args() -> argparse.Namespace:
     
     parser.add_argument("--readscov_table", dest="readscov_table", default=TEST_VALUES["cov_table"],
         help="ORFs' reads coverage table")
-
-    parser.add_argument("--min_opu_occup", dest="min_opu_occup", type=int, default=TEST_VALUES["min_opu_occup"],
-        help="minimum OPU occupancy (smaller than this will be discarded; default: 2)")
     
     parser.add_argument("--nslots", dest="nslots", type=int, default=TEST_VALUES["nslots"],
         help="number of threads used (default: 4)")
@@ -104,6 +100,9 @@ def parse_args() -> argparse.Namespace:
     
     parser.add_argument("--sample_name", dest="sample_name", default=TEST_VALUES["sample_name"],
         help="sample name used to name the files")
+
+    parser.add_argument("--overwrite", dest="overwrite", action="store_true", default=False,
+        help="overwrite previous folder if present (default: False)")
 
     return parser.parse_args()
 
@@ -211,7 +210,7 @@ def main() -> None:
     # 3.5. Convert to tab tables
     ###########################################################################
 
-    clust_table = os.path.join(clust_dir, f"orfs_clust_id{clust_thres_str}.tsv")
+    mmseqs_clust_table = os.path.join(clust_dir, f"orfs_clust_id{clust_thres_str}.tsv")
 
     try:
         run(
@@ -221,7 +220,7 @@ def main() -> None:
                 args.orfs_db,
                 args.orfs_db,
                 clust_db,
-                clust_table
+                mmseqs_clust_table
             ]
         )
     except subprocess.CalledProcessError:
@@ -229,101 +228,115 @@ def main() -> None:
         sys.exit(1)
 
     ###########################################################################
-    # 3.6. Identify duplicated seq_ids (ORFs in exact same location, opposite strand) and write to file
+    # 3.6. Map mean coverage to clusters
     ###########################################################################
 
-    # Build cluster mapping (seq_id -> clust_id)
-    array_clust = {}
-    dup_list_path = os.path.join(clust_dir, f"orfs_clust_id{clust_thres_str}_dup.tsv")
-
-    try:
-        with open(clust_table, "r", encoding="utf-8") as fh, \
-             open(dup_list_path, "w", encoding="utf-8") as dup_fh:
-            for line in fh:
-                parts = line.strip().split("\t")
-                if len(parts) >= 2:
-                    clust_id = re.sub(r"_[+,-]$", "", parts[0])
-                    seq_id = re.sub(r"_[+,-]$", "", parts[1])
-
-                    if seq_id not in array_clust:
-                        array_clust[seq_id] = clust_id
-                    else:
-                        # Duplicated seq_id (ORF in exact same location, opposite strand)
-                        dup_fh.write(f"{parts[0]}\n")
-    except Exception as exc:
-        print(f"Processing cluster table failed: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    ###########################################################################
-    # 3.7. Map coverage to clusters
-    ###########################################################################
-
-    clust2cov_table = os.path.join(clust_dir, f"orfs_clust_id{clust_thres_str}2cov.tsv")
+    clust2meancov_table = os.path.join(clust_dir, f"orfs_clust_id{clust_thres_str}2meancov.tsv")
     not_found_list_path = os.path.join(clust_dir, f"orfs_clust_id{clust_thres_str}_not_found.list")
 
     try:
-        with open(args.cov_table, "r", encoding="utf-8") as cov_fh, \
-             open(clust2cov_table, "w", encoding="utf-8") as out_fh, \
-             open(not_found_list_path, "w", encoding="utf-8") as nf_fh:
-            for line in cov_fh:
-                parts = line.strip().split("\t")
-                if len(parts) >= 2:
-                    seq_id = parts[0]
-                    abund = parts[1]
+        meancov_table_df = pd.read_csv(args.meancov_table, sep="\t", header=None,
+                             names=["sample_name", "seq_id", "abund"])
 
-                    if seq_id in array_clust:
-                        clust_id = array_clust[seq_id]
-                        # Extract sample name from seq_id (format: SAMPLE-k###_###...)
-                        sample_match = re.match(r"(.*)-k[0-9]+_[0-9]+.*", seq_id)
-                        if sample_match:
-                            sample = sample_match.group(1)
-                            out_fh.write(f"{sample}\t{clust_id}\t{seq_id}\t{abund}\n")
-                    else:
-                        # seq_ids filtered by length in module 3 will not be found
-                        nf_fh.write(f"{seq_id}\n")
+        mmseqs_clust_table_df = pd.read_csv(mmseqs_clust_table, sep="\t", header=None,
+                                            names=["clust_id", "orf_id"])
+
+        # Construct orf_id to match the format used in mg-clust-module-3.py
+        # when ORFs fasta files are concatenated and formatted with sample name prefix
+        meancov_table_df["orf_id"] = meancov_table_df["sample_name"] + "|" + meancov_table_df["seq_id"]
+
+        # Left join to map cluster IDs; ORFs filtered by length in module 3 will have NaN clust_id
+        merged_df = meancov_table_df.merge(
+            mmseqs_clust_table_df,
+            on="orf_id",
+            how="left"
+        )
+
+        # Split found / not found
+        clust2meancov_table_df = merged_df[merged_df["clust_id"].notna()]
+        notfound_df = merged_df[merged_df["clust_id"].isna()]
+
+        clust2meancov_table_df[["sample_name", "clust_id", "orf_id", "abund"]].to_csv(
+            clust2meancov_table, sep="\t", header=False, index=False)
+
+        notfound_df["orf_id"].to_csv(not_found_list_path, header=False, index=False)
+
     except Exception as exc:
-        print(f"Map cluster to abund failed: {exc}", file=sys.stderr)
+        print(f"Map cluster to mean coverage failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    # 7) Create workables: collapsed and filtered
-    parent_dir = os.path.dirname(args.output_dir)
-    clust2abund_table_workable = os.path.join(parent_dir, f"orfs_clust2abund_id{clust_thres_str}_workable.tsv")
+    ###########################################################################
+    # 3.7. Map reads coverage to clusters
+    ###########################################################################
 
-    # Process with Python (equivalent to gawk script)
-    clust2abund_array = defaultdict(lambda: defaultdict(float))
-    clust2occup_array = defaultdict(lambda: defaultdict(int))
+    clust2readscov_table = os.path.join(clust_dir, f"orfs_clust_id{clust_thres_str}2readscov.tsv")
 
     try:
-        with open(clust2abund_table, "r", encoding="utf-8") as fh:
-            for line in fh:
-                parts = line.strip().split("\t")
-                if len(parts) >= 4:
-                    sample = parts[0]
-                    opu_id = parts[1]
-                    abund = float(parts[3])
+        readscov_table_df = pd.read_csv(args.readscov_table, sep="\t", header=None,
+                             names=["sample_name", "seq_id", "abund"])
 
-                    clust2abund_array[sample][opu_id] += abund
-                    clust2occup_array[opu_id][sample] = 1
+        # Construct orf_id to match the format used in mg-clust-module-3.py
+        # when ORFs fasta files are concatenated and formatted with sample name prefix
+        readscov_table_df["orf_id"] = readscov_table_df["sample_name"] + "|" + readscov_table_df["seq_id"]
 
-        # Write filtered output
-        with open(clust2abund_table_workable, "w", encoding="utf-8") as out_fh:
-            for sample in clust2abund_array:
-                for opu_id in clust2abund_array[sample]:
-                    occup_total = len(clust2occup_array[opu_id])
-                    abund_total = clust2abund_array[sample][opu_id]
+        # Left join to map cluster IDs; ORFs filtered by length in module 3 will have NaN clust_id
+        merged_df = readscov_table_df.merge(
+            mmseqs_clust_table_df,
+            on="orf_id",
+            how="left"
+        )
 
-                    if occup_total >= args.min_opu_occup:
-                        out_fh.write(f"{sample}\t{opu_id}\t{abund_total}\n")
+        # Split found / not found
+        clust2readscov_table_df = merged_df[merged_df["clust_id"].notna()]
+
+        clust2readscov_table_df[["sample_name", "clust_id", "orf_id", "abund"]].to_csv(
+            clust2readscov_table, sep="\t", header=False, index=False)
 
     except Exception as exc:
-        print(f"collapse and filter opus failed: {exc}", file=sys.stderr)
+        print(f"Map cluster to reads coverage failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+        
+    ###########################################################################
+    # 3.7. Create workable: Collapsed mean coverage table
+    ###########################################################################
+
+    clust2meancov_table_workable = os.path.join(args.output_dir, f"orfs_clust_id{clust_thres_str}_meancov_workable.tsv")
+
+    try:
+        # Sum mean coverage per sample + cluster
+        clust2meancov_table_workable_df = clust2meancov_table_df.groupby(["sample_name", "clust_id"], 
+                                                                       as_index=False)["abund"].sum()
+        clust2meancov_table_workable_df.to_csv(clust2meancov_table_workable, 
+                                             sep="\t", header=False, index=False)
+
+    except Exception as exc:
+        print(f"Collapse and filter opus failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    ###########################################################################
+    # 3.8. Create workable: Collapsed reads coverage table
+    ###########################################################################
+
+    clust2readscov_table_workable = os.path.join(args.output_dir, f"orfs_clust_id{clust_thres_str}_readscov_workable.tsv")
+
+    try:
+        # Sum reads coverage per sample + cluster
+        clust2readscov_table_workable_df = clust2readscov_table_df.groupby(["sample_name", "clust_id"], 
+                                                                       as_index=False)["abund"].sum()
+        clust2readscov_table_workable_df.to_csv(clust2readscov_table_workable, 
+                                             sep="\t", header=False, index=False)
+
+    except Exception as exc:
+        print(f"Collapse and filter opus failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
     print("mg-clust_module-4.py exited successfully")
     sys.exit(0)
 
+###########################################################################
+# 4. Run the main function
+###########################################################################
 
 if __name__ == "__main__":
     main()
 
-# %%
