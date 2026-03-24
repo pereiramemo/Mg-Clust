@@ -17,12 +17,14 @@ where dependencies are available on PATH.
 ###############################################################################
 
 import argparse
-import os
 import re
 import shutil
+import sys, os
 import subprocess
-import sys
-from typing import List, Optional
+sys.path.insert(0, os.path.dirname(__file__))
+from utils import run, check_tools, check_file
+
+# os, subprocess, and sys are imported in utils.py, so they are available here as well
 
 fraggenescan = "FragGeneScanRs"
 bedtools = "bedtools"
@@ -32,36 +34,7 @@ bedtools = "bedtools"
 ###############################################################################
 
 ###############################################################################
-# 2.1 Run a command and check return code; optionally redirect stdout to file
-###############################################################################
-
-def run(cmd: List[str], stdout_path: Optional[str] = None) -> None:
-    """Run a command, stream output or redirect to file, and fail on non-zero return code."""
-    try:
-        if stdout_path:
-            with open(stdout_path, "w") as out_f:
-                proc = subprocess.run(cmd, stdout=out_f, check=False)
-        else:
-            proc = subprocess.run(cmd, check=False)
-    except FileNotFoundError as exc:
-        print(f"Command not found: {cmd[0]} ({exc})", file=sys.stderr)
-        sys.exit(1)
-
-    if proc.returncode != 0:
-        raise subprocess.CalledProcessError(proc.returncode, cmd)
-
-###############################################################################
-# 2.2 Check that required tools are available on PATH
-###############################################################################
-
-def check_tools(tools: List[str]) -> None:
-    missing = [t for t in tools if subprocess.run(["which", t], capture_output=True).returncode != 0]
-    if missing:
-        print(f"Missing tools: {', '.join(missing)}", file=sys.stderr)
-        sys.exit(1)
-
-###############################################################################
-# 2.3 Parse command-line arguments
+# 2.1 Parse command-line arguments
 ###############################################################################
 
 def parse_args() -> argparse.Namespace:
@@ -95,15 +68,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 ###############################################################################
-# 2.4 Ensure a file exists; exit with error if not
-###############################################################################
-
-def ensure_file(path: str, label: str) -> None:
-    if not os.path.isfile(path):
-        print(f"{label} is not a real file", file=sys.stderr)
-        sys.exit(1)
-
-###############################################################################
 # 3. Define the main function
 ###############################################################################
 
@@ -116,8 +80,8 @@ def main() -> None:
     # 3.1. Check mandatory files
     ###########################################################################
 
-    ensure_file(args.assembly_file, "input assembly file")
-    ensure_file(args.bam_file, "input bam file")
+    check_file(args.assembly_file, "input assembly file")
+    check_file(args.bam_file, "input bam file")
 
     ###########################################################################
     # 3.2. Check output directory
@@ -171,7 +135,7 @@ def main() -> None:
     bed_file = os.path.join(args.output_dir, f"{args.sample_name}_orfs.bed")
 
     # check that .out file was created
-    ensure_file(out_file, "FragGeneScan output .out file")
+    check_file(out_file, "FragGeneScan output .out file")
 
     # Parse .out file and create BED file
     # .out format: contig_id    start    end    strand    ...

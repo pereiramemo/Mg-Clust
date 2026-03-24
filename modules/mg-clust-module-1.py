@@ -18,6 +18,7 @@ where dependencies are available on PATH.
 
 import argparse
 import sys, os
+import subprocess
 import shutil
 sys.path.insert(0, os.path.dirname(__file__))
 from utils import run, check_tools, check_file

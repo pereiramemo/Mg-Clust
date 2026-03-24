@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
-Python rewrite of mg-clust_module-4.bash
+mg-clust module 4: ORF clustering and abundance table generation.
 
-Replicates the original behavior assuming execution inside the conda environment
-"mg-clust-module-4" (or equivalent) where dependencies are available on PATH.
+Assumes execution inside the conda environment "mg-clust-module-4" (or equivalent)
+where dependencies are available on PATH.
 
-- Accepts the same CLI options
-- Executes mmseqs for clustering with equivalent parameters
-- Performs the same data processing and formatting
+- Clusters filtered ORFs using MMseqs2 linclust at a given sequence identity threshold
+- Maps mean coverage and reads coverage tables to cluster IDs
+- Collapses per-ORF abundance to per-cluster abundance summed across samples
+- Filters clusters by minimum occupancy (number of samples in which the cluster is present)
 """
 
 ###############################################################################
@@ -15,60 +16,21 @@ Replicates the original behavior assuming execution inside the conda environment
 ###############################################################################
 
 import argparse
-import os
 import shutil
+import sys, os
 import subprocess
-import sys
 import pandas as pd
-from typing import List, Optional 
+sys.path.insert(0, os.path.dirname(__file__))
+from utils import run, check_tools, check_file
 
 mmseqs = "mmseqs"
-
-# Test values for development/debugging using test/data
-TEST_VALUES = {
-    "orfs_db": "/home/epereira/workspace/repositories/tools/Mg-Clust/test/test_output/output-3/orfs_filtered_db",
-    "cov_table": "/home/epereira/workspace/repositories/tools/Mg-Clust/test/test_output/output-3/orfs_cov.tsv",
-    "output_dir": "/home/epereira/workspace/repositories/tools/Mg-Clust/test/test_output/output-4",
-    "sample_name": "test_sample",
-    "nslots": 4,
-    "clust_thres": 0.7,
-    "min_opu_occup": 2,
-}
 
 ###############################################################################
 # 2. Define utility functions
 ###############################################################################
 
 ###############################################################################
-# 2.1 Run a command and check return code; optionally redirect stdout to file
-###############################################################################
-
-def run(cmd: List[str], stdout_path: Optional[str] = None) -> None:
-    """Run a command, stream output or redirect to file, and fail on non-zero return code."""
-    try:
-        if stdout_path:
-            with open(stdout_path, "w") as out_f:
-                proc = subprocess.run(cmd, stdout=out_f, check=False)
-        else:
-            proc = subprocess.run(cmd, check=False)
-    except FileNotFoundError as exc:
-        print(f"Command not found: {cmd[0]} ({exc})", file=sys.stderr)
-        sys.exit(1)
-    if proc.returncode != 0:
-        raise subprocess.CalledProcessError(proc.returncode, cmd)
-
-###############################################################################
-# 2.2 Check that required tools are available on PATH
-###############################################################################
-
-def check_tools(tools: List[str]) -> None:
-    missing = [t for t in tools if subprocess.run(["which", t], capture_output=True).returncode != 0]
-    if missing:
-        print(f"Missing tools: {', '.join(missing)}", file=sys.stderr)
-        sys.exit(1)
-
-###############################################################################
-# 2.3 Parse command-line arguments
+# 2.1 Parse command-line arguments
 ###############################################################################
 
 def parse_args() -> argparse.Namespace:
@@ -77,43 +39,31 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--help", action="help", help="print this help")
 
-    parser.add_argument("--clust_thres", dest="clust_thres", type=float, default=TEST_VALUES["clust_thres"],
+    parser.add_argument("--clust_thres", dest="clust_thres", type=float, default=0.7,
         help="clustering threshold, passed as -t to mmseqs cluster (default: 0.7)")
 
     parser.add_argument("--clust_cov_len", dest="clust_cov_len", type=float, default=0.85,
         help="minimum fraction of aligned residues for clustering, passed as -c to mmseqs cluster (default: 0.85)")
-    
-    parser.add_argument("--meancov_table", dest="meancov_table", default=TEST_VALUES["cov_table"],
+
+    parser.add_argument("--meancov_table", dest="meancov_table", required=True,
         help="ORFs' mean coverage table")
-    
-    parser.add_argument("--readscov_table", dest="readscov_table", default=TEST_VALUES["cov_table"],
+
+    parser.add_argument("--readscov_table", dest="readscov_table", required=True,
         help="ORFs' reads coverage table")
-    
-    parser.add_argument("--nslots", dest="nslots", type=int, default=TEST_VALUES["nslots"],
+
+    parser.add_argument("--nslots", dest="nslots", type=int, default=4,
         help="number of threads used (default: 4)")
-    
-    parser.add_argument("--orfs_db", dest="orfs_db", default=TEST_VALUES["orfs_db"],
+
+    parser.add_argument("--orfs_db", dest="orfs_db", required=True,
         help="mmseqs orfs db")
-    
-    parser.add_argument("--output_dir", dest="output_dir", default=TEST_VALUES["output_dir"],
-        help="directory to output generated data (default: mg-clust_output-2)")
-    
-    parser.add_argument("--sample_name", dest="sample_name", default=TEST_VALUES["sample_name"],
-        help="sample name used to name the files")
+
+    parser.add_argument("--output_dir", dest="output_dir", required=True,
+        help="directory to output generated data")
 
     parser.add_argument("--overwrite", dest="overwrite", action="store_true", default=False,
         help="overwrite previous folder if present (default: False)")
 
     return parser.parse_args()
-
-###############################################################################
-# 2.4 Ensure a file exists; exit with error if not
-###############################################################################
-
-def ensure_file(path: str, label: str) -> None:
-    if not os.path.isfile(path):
-        print(f"{label} is not a real file", file=sys.stderr)
-        sys.exit(1)
 
 ###############################################################################
 # 3. Define the main function
@@ -128,9 +78,9 @@ def main() -> None:
     # 3.1. Check mandatory files
     ###########################################################################
 
-    ensure_file(args.meancov_table, "mean coverage table")
-    ensure_file(args.readscov_table, "reads coverage table")
-    ensure_file(args.orfs_db, "ORFs database")
+    check_file(args.meancov_table, "mean coverage table")
+    check_file(args.readscov_table, "reads coverage table")
+    check_file(args.orfs_db, "ORFs database")
 
     ###########################################################################
     # 3.2. Check output directory
