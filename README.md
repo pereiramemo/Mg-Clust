@@ -206,7 +206,7 @@ Runs once. Clusters the filtered ORFs using MMseqs2 `cluster` at the specified s
 
 ---
 
-## Output directory structure
+## Output directory structure and file descriptions
 
 ```
 results/
@@ -225,10 +225,49 @@ results/
         orfs_readscov.tsv
     module-4/
         clust_orfs_id70perc/
-            ...
+            orfs_clust_id70perc.tsv
+            orfs_clust_id70perc2meancov.tsv
+            orfs_clust_id70perc2readscov.tsv
+            orfs_clust_id70perc_not_found.list
         orfs_clust_id70perc_meancov_workable.tsv
         orfs_clust_id70perc_readscov_workable.tsv
 ```
+
+### Module 1 outputs
+
+| File | Description |
+|---|---|
+| `assembly/<sample>.contigs.fa` | FASTA file of assembled contigs produced by MEGAHIT. Contigs shorter than `min_contig_len` are excluded. |
+| `<sample>_sorted.bam` | Coordinate-sorted BAM of reads mapped back to the assembly. Only primary, high-quality alignments (MAPQ ≥ 10, flag `-F 260`) are retained. Intermediate SAM and unsorted BAM are removed. If `--markdup` is enabled, PCR duplicates are removed by Picard MarkDuplicates before sorting. |
+
+### Module 2 outputs
+
+| File | Description |
+|---|---|
+| `<sample>_orfs.faa` | Protein sequences of predicted ORFs in FASTA format, produced by FragGeneScanRs. Each header encodes the contig ID, start, end, and strand (e.g. `>contig1_10_350_+`). |
+| `<sample>_orfs_meancov.tsv` | Tab-separated file with columns: `contig_id`, `start`, `end`, `strand`, `orf_id`, `mean_depth`. Mean sequencing depth per ORF computed by `bedtools coverage -mean`. |
+| `<sample>_orfs_readscov.tsv` | Tab-separated file with columns: `contig_id`, `start`, `end`, `strand`, `orf_id`, `read_count`. Number of reads overlapping each ORF computed by `bedtools coverage -counts`. |
+
+### Module 3 outputs
+
+| File | Description |
+|---|---|
+| `orfs_filt_db*` | MMseqs2 sequence database built from all filtered ORFs across all samples. Consists of multiple files sharing the prefix `orfs_filt_db`. ORF headers are prefixed with the sample name (`sample_name\|orf_id`). |
+| `orfs_meancov.tsv` | Merged mean coverage table across all samples. Columns: `sample_name`, `orf_id`, `mean_depth`. |
+| `orfs_readscov.tsv` | Merged read counts table across all samples. Columns: `sample_name`, `orf_id`, `read_count`. |
+
+### Module 4 outputs
+
+The output subdirectory name encodes the clustering threshold (e.g. `clust_orfs_id70perc` for `--clust_thres 0.7`).
+
+| File | Description |
+|---|---|
+| `clust_orfs_id<N>perc/orfs_clust_id<N>perc.tsv` | MMseqs2 cluster membership table. Columns: `cluster_id`, `orf_id`. Each row assigns an ORF to its cluster representative. |
+| `clust_orfs_id<N>perc/orfs_clust_id<N>perc2meancov.tsv` | Per-ORF mean coverage mapped to cluster IDs. Columns: `sample_name`, `cluster_id`, `orf_id`, `mean_depth`. |
+| `clust_orfs_id<N>perc/orfs_clust_id<N>perc2readscov.tsv` | Per-ORF read counts mapped to cluster IDs. Columns: `sample_name`, `cluster_id`, `orf_id`, `read_count`. |
+| `clust_orfs_id<N>perc/orfs_clust_id<N>perc_not_found.list` | List of ORF IDs present in the coverage table but absent from the cluster table. These are ORFs that were removed by the length filter in Module 3. |
+| `orfs_clust_id<N>perc_meancov_workable.tsv` | Collapsed abundance table: mean coverage summed per cluster per sample. Columns: `sample_name`, `cluster_id`, `mean_depth_sum`. Ready for downstream analysis. |
+| `orfs_clust_id<N>perc_readscov_workable.tsv` | Collapsed abundance table: read counts summed per cluster per sample. Columns: `sample_name`, `cluster_id`, `read_count_sum`. Ready for downstream analysis. |
 
 ---
 
@@ -252,4 +291,28 @@ docker push ghcr.io/epereira/mg-clust/module-1:latest
 docker push ghcr.io/epereira/mg-clust/module-2:latest
 docker push ghcr.io/epereira/mg-clust/module-3:latest
 docker push ghcr.io/epereira/mg-clust/module-4:latest
+```
+
+---
+
+## License
+
+This project is licensed under the GNU General Public License v3.0. See the [LICENSE](LICENSE) file for the full text.
+
+```
+Mg-Clust: Clustering of ORF sequences in metagenomic data
+Copyright (C) 2024  epereira
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
 ```
