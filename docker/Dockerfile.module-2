@@ -1,0 +1,11 @@
+FROM mambaorg/micromamba:2.0-debian12
+
+USER root
+COPY resources/requirements-module-2.yml /tmp/requirements.yml
+
+RUN micromamba install --yes --name base --file /tmp/requirements.yml \
+ && micromamba clean --all --yes \
+ && rm /tmp/requirements.yml
+
+ENV PATH="/opt/conda/bin:$PATH"
+CMD ["/bin/bash"]
