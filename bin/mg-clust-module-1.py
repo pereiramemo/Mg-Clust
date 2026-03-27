@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#! /usr/bin/env python3
+
 """
 mg-clust module 1: de novo assembly and read mapping.
 
