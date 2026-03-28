@@ -19,18 +19,16 @@ All tool dependencies (MEGAHIT, BWA, samtools, Picard, FragGeneScanRs, bedtools,
 ## Quick start
 
 ```bash
-nextflow run main.nf \
-    --reads_dir data/reads \
-    --output_dir results
+nextflow run main.nf --input_dir data/reads
 ```
 
-By default, Nextflow looks for paired-end reads matching `*_R{1,2}*.fastq` inside `reads_dir`.
+By default, Nextflow looks for paired-end reads matching `*_R{1,2}*.fastq` inside `input_dir`. All parameters can be overridden in `nextflow.config` or on the command line.
 
 ---
 
 ## Input
 
-Paired-end FASTQ files placed in the directory specified by `--reads_dir`. Sample names are inferred automatically from the filenames using the pattern `--reads_pattern`.
+Paired-end FASTQ files placed in the directory specified by `--input_dir`. Sample names are inferred automatically from the filenames using the pattern `--reads_pattern`.
 
 Example directory structure:
 
@@ -42,6 +40,8 @@ data/reads/
     sample2_R2.fastq
 ```
 
+The directory is set via `input_dir` in `nextflow.config` (default: `./test/data`).
+
 ---
 
 ## Parameters
@@ -50,34 +50,16 @@ All parameters can be set in `nextflow.config` or passed on the command line wit
 
 | Parameter | Default | Description |
 |---|---|---|
-| `reads_dir` | `data/reads` | Directory containing input paired-end reads |
+| `input_dir` | `./test/data` | Directory containing input paired-end reads |
 | `reads_pattern` | `*_R{1,2}*.fastq` | Glob pattern used to match paired-end read files |
-| `output_dir` | `results` | Directory for all pipeline outputs |
-| `nslots` | `4` | Number of threads per process |
+| `nslots` | `16` | Number of threads per process |
 | `assem_preset` | `meta-sensitive` | MEGAHIT assembly preset |
 | `min_contig_len` | `250` | Minimum contig length (bp); shorter contigs are discarded |
 | `min_seq` | `5` | Minimum number of assembled contigs required to continue |
-| `markdup` | `false` | Run Picard MarkDuplicates to remove PCR duplicates |
 | `train_file_name` | `illumina_1` | FragGeneScanRs training model |
 | `min_orf_length` | `60` | Minimum ORF length (amino acids); shorter ORFs are discarded |
 | `clust_thres` | `0.7` | MMseqs2 sequence identity threshold for clustering |
 | `clust_cov_len` | `0.85` | Minimum fraction of aligned residues for clustering (`-c` in MMseqs2) |
-
----
-
-## Execution profiles
-
-Two profiles are available in `nextflow.config`:
-
-```bash
-# Run locally
-nextflow run main.nf -profile local
-
-# Run on a SLURM cluster
-nextflow run main.nf -profile slurm
-```
-
-The SLURM profile submits each process as a job to the `normal` queue. Edit `nextflow.config` to set the correct `--account` and queue name for your cluster.
 
 ---
 
@@ -109,8 +91,8 @@ Assembles paired-end reads with MEGAHIT, maps them back to the assembly with BWA
 | `--overwrite` | `false` | Overwrite output directory if it exists |
 
 **Outputs:**
-- `assembly/<sample_name>.contigs.fa` — assembled contigs
-- `<sample_name>_sorted.bam` — sorted BAM of reads mapped to contigs
+- `<sample_name>/assembly/<sample_name>.contigs.fa` — assembled contigs
+- `<sample_name>/<sample_name>_sorted.bam` — sorted BAM of reads mapped to contigs
 
 ---
 
@@ -137,9 +119,9 @@ Predicts ORFs from assembled contigs using FragGeneScanRs, converts coordinates 
 | `--overwrite` | `false` | Overwrite output directory if it exists |
 
 **Outputs:**
-- `<sample_name>_orfs.faa` — predicted ORF protein sequences
-- `<sample_name>_orfs_meancov.tsv` — mean sequencing depth per ORF
-- `<sample_name>_orfs_readscov.tsv` — read count per ORF
+- `<sample_name>/<sample_name>_orfs.faa` — predicted ORF protein sequences
+- `<sample_name>/<sample_name>_orfs_meancov.tsv` — mean sequencing depth per ORF
+- `<sample_name>/<sample_name>_orfs_readscov.tsv` — read count per ORF
 
 ---
 
@@ -166,9 +148,9 @@ Runs once across all samples. Concatenates per-sample ORF FASTA files (prefixing
 | `--overwrite` | `false` | Overwrite output directory if it exists |
 
 **Outputs:**
-- `orfs_filt_db*` — MMseqs2 database of filtered ORFs
-- `orfs_meancov.tsv` — merged mean coverage table (columns: `sample_name`, `orf_id`, `mean_coverage`)
-- `orfs_readscov.tsv` — merged reads coverage table (columns: `sample_name`, `orf_id`, `read_count`)
+- `module3/orfs_filt_db*` — MMseqs2 database of filtered ORFs (multiple files sharing the prefix)
+- `module3/orfs_meancov.tsv` — merged mean coverage table (columns: `sample_name`, `orf_id`, `mean_coverage`)
+- `module3/orfs_readscov.tsv` — merged reads coverage table (columns: `sample_name`, `orf_id`, `read_count`)
 
 ---
 
@@ -195,12 +177,13 @@ Runs once. Clusters the filtered ORFs using MMseqs2 `cluster` at the specified s
 | `--output_dir` | — | Output directory (required) |
 | `--overwrite` | `false` | Overwrite output directory if it exists |
 
-**Outputs (inside a subdirectory named by threshold, e.g. `clust_orfs_id70perc/`):**
+**Outputs (inside `module4/clust_orfs_id<N>perc/`):**
 - `orfs_clust_id<N>perc.tsv` — cluster membership table (columns: `cluster_id`, `orf_id`)
 - `orfs_clust_id<N>perc2meancov.tsv` — per-ORF mean coverage mapped to clusters
 - `orfs_clust_id<N>perc2readscov.tsv` — per-ORF read counts mapped to clusters
+- `orfs_clust_id<N>perc_not_found.list` — ORFs present in coverage tables but absent from clusters
 
-**Outputs (in root output directory):**
+**Outputs (in `module4/`):**
 - `orfs_clust_id<N>perc_meancov_workable.tsv` — collapsed mean coverage per cluster per sample
 - `orfs_clust_id<N>perc_readscov_workable.tsv` — collapsed read counts per cluster per sample
 
@@ -209,21 +192,26 @@ Runs once. Clusters the filtered ORFs using MMseqs2 `cluster` at the specified s
 ## Output directory structure and file descriptions
 
 ```
-results/
-    module-1/
-        <sample_name>/
-            assembly/<sample_name>.contigs.fa
-            <sample_name>_sorted.bam
-    module-2/
-        <sample_name>/
-            <sample_name>_orfs.faa
-            <sample_name>_orfs_meancov.tsv
-            <sample_name>_orfs_readscov.tsv
-    module-3/
+work/<hash>/
+    # MODULE1 (per sample)
+    <sample_name>/
+        assembly/<sample_name>.contigs.fa
+        <sample_name>_sorted.bam
+
+    # MODULE2 (per sample)
+    <sample_name>/
+        <sample_name>_orfs.faa
+        <sample_name>_orfs_meancov.tsv
+        <sample_name>_orfs_readscov.tsv
+
+    # MODULE3 (once)
+    module3/
         orfs_filt_db*
         orfs_meancov.tsv
         orfs_readscov.tsv
-    module-4/
+
+    # MODULE4 (once)
+    module4/
         clust_orfs_id70perc/
             orfs_clust_id70perc.tsv
             orfs_clust_id70perc2meancov.tsv
@@ -237,28 +225,28 @@ results/
 
 | File | Description |
 |---|---|
-| `assembly/<sample>.contigs.fa` | FASTA file of assembled contigs produced by MEGAHIT. Contigs shorter than `min_contig_len` are excluded. |
-| `<sample>_sorted.bam` | Coordinate-sorted BAM of reads mapped back to the assembly. Only primary, high-quality alignments (MAPQ ≥ 10, flag `-F 260`) are retained. Intermediate SAM and unsorted BAM are removed. If `--markdup` is enabled, PCR duplicates are removed by Picard MarkDuplicates before sorting. |
+| `<sample>/assembly/<sample>.contigs.fa` | FASTA file of assembled contigs produced by MEGAHIT. Contigs shorter than `min_contig_len` are excluded. |
+| `<sample>/<sample>_sorted.bam` | Coordinate-sorted BAM of reads mapped back to the assembly. Only primary, high-quality alignments (MAPQ ≥ 10, flag `-F 260`) are retained. Intermediate SAM and unsorted BAM are removed. |
 
 ### Module 2 outputs
 
 | File | Description |
 |---|---|
-| `<sample>_orfs.faa` | Protein sequences of predicted ORFs in FASTA format, produced by FragGeneScanRs. Each header encodes the contig ID, start, end, and strand (e.g. `>contig1_10_350_+`). |
-| `<sample>_orfs_meancov.tsv` | Tab-separated file with columns: `contig_id`, `start`, `end`, `strand`, `orf_id`, `mean_depth`. Mean sequencing depth per ORF computed by `bedtools coverage -mean`. |
-| `<sample>_orfs_readscov.tsv` | Tab-separated file with columns: `contig_id`, `start`, `end`, `strand`, `orf_id`, `read_count`. Number of reads overlapping each ORF computed by `bedtools coverage -counts`. |
+| `<sample>/<sample>_orfs.faa` | Protein sequences of predicted ORFs in FASTA format, produced by FragGeneScanRs. Each header encodes the contig ID, start, end, and strand (e.g. `>contig1_10_350_+`). |
+| `<sample>/<sample>_orfs_meancov.tsv` | Tab-separated file with columns: `contig_id`, `start`, `end`, `strand`, `orf_id`, `mean_depth`. Mean sequencing depth per ORF computed by `bedtools coverage -mean`. |
+| `<sample>/<sample>_orfs_readscov.tsv` | Tab-separated file with columns: `contig_id`, `start`, `end`, `strand`, `orf_id`, `read_count`. Number of reads overlapping each ORF computed by `bedtools coverage -counts`. |
 
 ### Module 3 outputs
 
 | File | Description |
 |---|---|
-| `orfs_filt_db*` | MMseqs2 sequence database built from all filtered ORFs across all samples. Consists of multiple files sharing the prefix `orfs_filt_db`. ORF headers are prefixed with the sample name (`sample_name\|orf_id`). |
-| `orfs_meancov.tsv` | Merged mean coverage table across all samples. Columns: `sample_name`, `orf_id`, `mean_depth`. |
-| `orfs_readscov.tsv` | Merged read counts table across all samples. Columns: `sample_name`, `orf_id`, `read_count`. |
+| `module3/orfs_filt_db*` | MMseqs2 sequence database built from all filtered ORFs across all samples. Consists of multiple files sharing the prefix `orfs_filt_db`. ORF headers are prefixed with the sample name (`sample_name\|orf_id`). |
+| `module3/orfs_meancov.tsv` | Merged mean coverage table across all samples. Columns: `sample_name`, `orf_id`, `mean_depth`. |
+| `module3/orfs_readscov.tsv` | Merged read counts table across all samples. Columns: `sample_name`, `orf_id`, `read_count`. |
 
 ### Module 4 outputs
 
-The output subdirectory name encodes the clustering threshold (e.g. `clust_orfs_id70perc` for `--clust_thres 0.7`).
+All outputs are written under `module4/`. The subdirectory name encodes the clustering threshold (e.g. `clust_orfs_id70perc` for `--clust_thres 0.7`).
 
 | File | Description |
 |---|---|
