@@ -2,7 +2,6 @@ name: mg-clust-module-2
 channels:
   - bioconda
   - conda-forge
-  - defaults
 dependencies:
   - python>=3.8
   - frag_gene_scan_rs=1.1.0

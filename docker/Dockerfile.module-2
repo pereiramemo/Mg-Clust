@@ -1,11 +1,12 @@
-FROM mambaorg/micromamba:2.0-debian12
+FROM mambaorg/micromamba:1.5.10-noble
 
+COPY --chown=$MAMBA_USER:$MAMBA_USER docker/resources/requirements-module-2.yml /tmp/conda.yml
+RUN micromamba install -y -n base -f /tmp/conda.yml \
+    && micromamba install -y -n base conda-forge::procps-ng \
+    && micromamba env export --name base --explicit > environment.lock \
+    && echo ">> CONDA_LOCK_START" \
+    && cat environment.lock \
+    && echo "<< CONDA_LOCK_END" \
+    && micromamba clean -a -y
 USER root
-COPY resources/requirements-module-2.yml /tmp/requirements.yml
-
-RUN micromamba install --yes --name base --file /tmp/requirements.yml \
- && micromamba clean --all --yes \
- && rm /tmp/requirements.yml
-
-ENV PATH="/opt/conda/bin:$PATH"
-CMD ["/bin/bash"]
+ENV PATH="$MAMBA_ROOT_PREFIX/bin:$PATH"

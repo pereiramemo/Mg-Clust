@@ -2,7 +2,6 @@ name: mg-clust-module-4
 channels:
   - bioconda
   - conda-forge
-  - defaults
 dependencies:
   - python>=3.8
   - pandas=3.0.1
