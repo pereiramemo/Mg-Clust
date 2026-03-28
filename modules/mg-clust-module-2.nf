@@ -14,7 +14,9 @@ process MODULE2 {
     tuple val(sample_name), path(assembly), path(bam)
 
     output:
-    path(sample_name)
+    path("${sample_name}/${sample_name}_orfs.faa"),          emit: faa
+    path("${sample_name}/${sample_name}_orfs_meancov.tsv"),  emit: meancov
+    path("${sample_name}/${sample_name}_orfs_readscov.tsv"), emit: readscov
 
     script:
     """
