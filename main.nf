@@ -17,7 +17,7 @@ workflow {
     )
 
     if (params.stop_at_module < 4) {
-        log.warn "Workflow will stop at module ${params.stop_at_module}. To run the full workflow, set stop_at_module to 4."
+        log.warn "Workflow will stop at module ${params.stop_at_module}. "
     }
 
     // MODULE1: Assembly + read mapping
