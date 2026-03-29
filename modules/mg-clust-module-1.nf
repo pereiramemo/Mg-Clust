@@ -7,7 +7,9 @@
 process MODULE1 {
 
     container "ghcr.io/epereira/mg-clust/module-1:latest"
-    publishDir "${params.output_dir}/module1/", mode: "copy"
+    publishDir "${params.output_dir}/module1/", 
+                mode: "copy",
+                enabled: params.full_output
 
     tag "${sample_name}"
     
