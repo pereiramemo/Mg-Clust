@@ -1,9 +1,10 @@
-# Mg-Clust
+
+![MG-Clust workflow](./figures/MG-Clust_logo.png)
 ## Clustering of ORF sequences in metagenomic data
 
 Mg-Clust is a Nextflow pipeline for computing Operational Protein Units (OPUs) from metagenomic data. It takes paired-end reads from multiple samples, assembles them, maps the reads back onto the assembled contigs to compute per-ORF coverage, predicts ORFs, and clusters them by amino acid sequence identity. Per-ORF coverage values are then aggregated across all ORFs within each cluster to produce two per-OPU abundance tables: one based on mean sequencing depth and one based on read counts.
 
-![MG-Clust workflow](./figures/MG-Clust.png)
+![MG-Clust workflow](./figures/MG-Clust-ENG.png)
 
 ---
 
