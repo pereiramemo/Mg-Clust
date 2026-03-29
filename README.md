@@ -85,6 +85,8 @@ All parameters can be set in `nextflow.config` or passed on the command line wit
 | `output_dir` | `./test/mg-clust-output` | Directory where all module outputs are published |
 | `reads_pattern` | `*_R{1,2}*.fastq` | Glob pattern used to match paired-end read files |
 | `nslots` | `16` | Number of threads per process |
+| `stop_at_module` | `4` | Stop the pipeline after this module (1–4). Outputs of the last module to run are always published. See [partial execution](#partial-execution) |
+| `full_output` | `false` | Publish outputs from all modules, not just the last one. When `stop_at_module < 4`, the last module's outputs are always published regardless of this flag |
 | `assem_preset` | `meta-sensitive` | MEGAHIT assembly preset |
 | `min_contig_len` | `250` | Minimum contig length (bp); shorter contigs are discarded |
 | `min_seq` | `5` | Minimum number of assembled contigs required to continue |
@@ -92,6 +94,31 @@ All parameters can be set in `nextflow.config` or passed on the command line wit
 | `min_orf_length` | `60` | Minimum ORF length (amino acids); shorter ORFs are discarded |
 | `clust_thres` | `0.7` | MMseqs2 sequence identity threshold for clustering |
 | `clust_cov_len` | `0.85` | Minimum fraction of aligned residues for clustering (`-c` in MMseqs2) |
+
+## Partial execution
+
+The `--stop_at_module` parameter allows the pipeline to be stopped after a specific module. This is useful for inspecting intermediate results or running only part of the analysis.
+
+```bash
+# Run assembly and read mapping only (module 1)
+nextflow run main.nf --stop_at_module 1
+
+# Run through ORF prediction (modules 1–2)
+nextflow run main.nf --stop_at_module 2
+
+# Run through ORF filtering and MMseqs2 DB creation (modules 1–3)
+nextflow run main.nf --stop_at_module 3
+
+# Run the full pipeline (default)
+nextflow run main.nf
+```
+
+The outputs of the last module to run are always published to `--output_dir`. Intermediate module outputs (from earlier modules) are only published when `--full_output true` is set:
+
+```bash
+# Run through module 2 and publish outputs from both modules 1 and 2
+nextflow run main.nf --stop_at_module 2 --full_output true
+```
 
 ---
 
@@ -102,6 +129,8 @@ All parameters can be set in `nextflow.config` or passed on the command line wit
 ---
 
 ## mg-clust-module-1.py
+
+> Stop after this module with `--stop_at_module 1`.
 
 De novo assembly of paired-end reads and mapping back to the assembly.
 
@@ -140,6 +169,8 @@ mg-clust-module-1.py \
 
 ## mg-clust-module-2.py
 
+> Stop after this module with `--stop_at_module 2`.
+
 ORF prediction from assembled contigs and per-ORF coverage estimation.
 
 ```bash
@@ -171,6 +202,8 @@ mg-clust-module-2.py \
 ---
 
 ## mg-clust-module-3.py
+
+> Stop after this module with `--stop_at_module 3`.
 
 Concatenation of per-sample ORFs, length filtering, and MMseqs2 database creation. Runs once across all samples.
 
