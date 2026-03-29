@@ -95,6 +95,12 @@ All parameters can be set in `nextflow.config` or passed on the command line wit
 
 ---
 
+# Module documentation
+
+> **Note:** The sections below document the parameters and behaviour of each Python module for reference purposes. These scripts are executed automatically by the Nextflow pipeline and are not intended to be run directly by users.
+
+---
+
 ## mg-clust-module-1.py
 
 De novo assembly of paired-end reads and mapping back to the assembly.
