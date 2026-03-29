@@ -49,25 +49,7 @@ All tool dependencies are packaged in Docker images hosted on GitHub Container R
 
 ## Docker images
 
-Images are built from the Dockerfiles in `docker/` and must be run from the **repository root**:
-
-```bash
-docker build --network=host -f docker/Dockerfile.module-1 -t ghcr.io/epereira/mg-clust/module-1:latest .
-docker build --network=host -f docker/Dockerfile.module-2 -t ghcr.io/epereira/mg-clust/module-2:latest .
-docker build --network=host -f docker/Dockerfile.module-3 -t ghcr.io/epereira/mg-clust/module-3:latest .
-docker build --network=host -f docker/Dockerfile.module-4 -t ghcr.io/epereira/mg-clust/module-4:latest .
-```
-
-To push to GitHub Container Registry:
-
-```bash
-echo $CR_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
-
-docker push ghcr.io/epereira/mg-clust/module-1:latest
-docker push ghcr.io/epereira/mg-clust/module-2:latest
-docker push ghcr.io/epereira/mg-clust/module-3:latest
-docker push ghcr.io/epereira/mg-clust/module-4:latest
-```
+Docker images are pulled automatically from GitHub Container Registry when the pipeline runs. Dockerfiles and build instructions for developers are available in the `docker/` directory.
 
 ---
 
