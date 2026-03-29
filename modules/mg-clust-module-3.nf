@@ -6,7 +6,8 @@
 
 process MODULE3 {
     container "ghcr.io/epereira/mg-clust/module-3:latest"
-    
+    publishDir "${params.output_dir}/module3/", mode: "copy"
+
     input:
     path(orf_files)
     path(meancov_files)

@@ -6,6 +6,7 @@
 
 process MODULE4 {
     container "ghcr.io/epereira/mg-clust/module-4:latest"
+    publishDir "${params.output_dir}/", mode: "copy"
 
     input:
     path(orfs_filt_db)          
