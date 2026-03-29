@@ -19,7 +19,7 @@ All tool dependencies (MEGAHIT, BWA, samtools, Picard, FragGeneScanRs, bedtools,
 ## Quick start
 
 ```bash
-nextflow run main.nf --input_dir data/reads
+nextflow run main.nf --input_dir data/reads --output_dir results
 ```
 
 By default, Nextflow looks for paired-end reads matching `*_R{1,2}*.fastq` inside `input_dir`. All parameters can be overridden in `nextflow.config` or on the command line.
@@ -51,6 +51,7 @@ All parameters can be set in `nextflow.config` or passed on the command line wit
 | Parameter | Default | Description |
 |---|---|---|
 | `input_dir` | `./test/data` | Directory containing input paired-end reads |
+| `output_dir` | `./test/mg-clust-output` | Directory where all module outputs are published |
 | `reads_pattern` | `*_R{1,2}*.fastq` | Glob pattern used to match paired-end read files |
 | `nslots` | `16` | Number of threads per process |
 | `assem_preset` | `meta-sensitive` | MEGAHIT assembly preset |
@@ -192,33 +193,30 @@ Runs once. Clusters the filtered ORFs using MMseqs2 `cluster` at the specified s
 ## Output directory structure and file descriptions
 
 ```
-work/<hash>/
-    # MODULE1 (per sample)
-    <sample_name>/
-        assembly/<sample_name>.contigs.fa
-        <sample_name>_sorted.bam
-
-    # MODULE2 (per sample)
-    <sample_name>/
-        <sample_name>_orfs.faa
-        <sample_name>_orfs_meancov.tsv
-        <sample_name>_orfs_readscov.tsv
-
-    # MODULE3 (once)
+<output_dir>/
+    module1/
+        <sample_name>/
+            assembly/<sample_name>.contigs.fa
+            <sample_name>_sorted.bam
+    module2/
+        <sample_name>/
+            <sample_name>_orfs.faa
+            <sample_name>_orfs_meancov.tsv
+            <sample_name>_orfs_readscov.tsv
     module3/
-        orfs_filt_db*
-        orfs_meancov.tsv
-        orfs_readscov.tsv
-
-    # MODULE4 (once)
+        module3/
+            orfs_filt_db*
+            orfs_meancov.tsv
+            orfs_readscov.tsv
     module4/
-        clust_orfs_id70perc/
-            orfs_clust_id70perc.tsv
-            orfs_clust_id70perc2meancov.tsv
-            orfs_clust_id70perc2readscov.tsv
-            orfs_clust_id70perc_not_found.list
-        orfs_clust_id70perc_meancov_workable.tsv
-        orfs_clust_id70perc_readscov_workable.tsv
+        module4/
+            clust_orfs_id70perc/
+                orfs_clust_id70perc.tsv
+                orfs_clust_id70perc2meancov.tsv
+                orfs_clust_id70perc2readscov.tsv
+                orfs_clust_id70perc_not_found.list
+            orfs_clust_id70perc_meancov_workable.tsv
+            orfs_clust_id70perc_readscov_workable.tsv
 ```
 
 ### Module 1 outputs
