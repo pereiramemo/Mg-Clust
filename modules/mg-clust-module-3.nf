@@ -6,9 +6,9 @@
 
 process MODULE3 {
     container "ghcr.io/epereira/mg-clust/module-3:latest"
-    publishDir "${params.output_dir}/module3/", 
+    publishDir "${params.output_dir}/module3/",
                 mode: "copy",
-                enabled: params.full_output
+                enabled: params.full_output || params.stop_at_module == 3
 
     input:
     path(orf_files)
