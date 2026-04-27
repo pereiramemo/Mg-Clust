@@ -1,0 +1,7 @@
+name: mg-clust-module-6
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python>=3.13
+  - pyhmmer>=0.10
