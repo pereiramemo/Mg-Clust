@@ -5,6 +5,9 @@ include { MODULE1 } from './modules/mg-clust-module-1.nf'
 include { MODULE2 } from './modules/mg-clust-module-2.nf'
 include { MODULE3 } from './modules/mg-clust-module-3.nf'
 include { MODULE4 } from './modules/mg-clust-module-4.nf'
+include { MODULE5 } from './modules/mg-clust-module-5.nf'
+include { MODULE6 } from './modules/mg-clust-module-6.nf'
+include { MODULE7 } from './modules/mg-clust-module-7.nf'
 
 
 workflow {
@@ -16,29 +19,54 @@ workflow {
         checkIfExists: true
     )
 
-    if (params.stop_at_module < 4) {
-        log.warn "Workflow will stop at module ${params.stop_at_module}. "
-    }
+    log.info "Pipeline will run up to module ${params.stop_at_module}"
 
-    // MODULE1: Assembly + read mapping
+    // MODULE1: Assembly + read mapping (always runs)
     module1_out = MODULE1(reads_ch)
 
+    // MODULE2: ORF prediction + coverage estimation (per sample)
     if (params.stop_at_module >= 2) {
-        // MODULE2: ORF prediction + coverage estimation (per sample)
         module2_out = MODULE2(module1_out)
+    }
 
-        if (params.stop_at_module >= 3) {
-            // MODULE3: Concatenate samples, filter ORFs, create MMseqs2 DB
-            orf_files_ch      = module2_out.faa.collect()
-            meancov_files_ch  = module2_out.meancov.collect()
-            readscov_files_ch = module2_out.readscov.collect()
-            module3_out = MODULE3(orf_files_ch, meancov_files_ch, readscov_files_ch)
+    // MODULE3: Concatenate samples, filter ORFs, create MMseqs2 DB
+    if (params.stop_at_module >= 3) {
+        orf_files_ch      = module2_out.faa.map     { _sn, faa -> faa }.collect()
+        meancov_files_ch  = module2_out.meancov.map  { _sn, cov -> cov }.collect()
+        readscov_files_ch = module2_out.readscov.map { _sn, cov -> cov }.collect()
+        module3_out       = MODULE3(orf_files_ch, meancov_files_ch, readscov_files_ch)
+    }
 
-            if (params.stop_at_module >= 4) {
-                // MODULE4: ORF clustering + abundance tables
-                MODULE4(module3_out.orfs_filt_db, module3_out.concat_meancov, module3_out.concat_readscov)
-            }
-        }
+    // MODULE4: ORF clustering + abundance tables
+    if (params.stop_at_module >= 4) {
+        module4_out = MODULE4(module3_out.orfs_filt_db, module3_out.concat_meancov, module3_out.concat_readscov)
+    }
+
+    // MODULE5: Taxonomic annotation of contigs against GTDB using MMseqs2
+    if (params.stop_at_module >= 5) {
+        contigs_ch = module1_out
+                    .map { sample_name, assembly, _bam -> tuple(sample_name, assembly) }
+                    .join(module2_out.bed, by : 0) // joins on sample_name, produces tuple(sample_name, assembly, orf_bed)
+            
+        module5_out = MODULE5(contigs_ch)
+    }
+
+    // MODULE6: Functional annotation of ORFs against KO HMMs using pyHMMER
+    if (params.stop_at_module >= 6) {
+        faa = module2_out.faa.map { sample_name, faa_path -> tuple(sample_name, faa_path) }
+        module6_out = MODULE6(faa)
+    }
+
+    // MODULE7: Merge taxonomy, function, and abundance tables
+    if (params.stop_at_module >= 7) {
+        tax_files_ch = module5_out.tax_workable.collect()
+        fun_files_ch = module6_out.fun_workable.collect()
+        MODULE7(
+            tax_files_ch,
+            fun_files_ch,
+            module4_out.meancov_workable,
+            module4_out.readscov_workable
+        )
     }
 
 }

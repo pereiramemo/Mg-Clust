@@ -56,6 +56,9 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction, default=False,
         help="use per-model gathering thresholds (default: False; use --cut_ga to enable)")
 
+    parser.add_argument("--sample_name", dest="sample_name", required=True,
+        help="sample name used to name the files")
+
     parser.add_argument("--nslots", dest="nslots", type=int, default=4,
         help="number of threads (default: 4)")
 
@@ -92,6 +95,7 @@ def run_hmmsearch(hmm_db, orfs_faa, domtblout, evalue_thres, cut_ga, nslots):
 ###############################################################################
 
 def write_best_hits(domtblout, annotation_table):
+    args = parse_args()
     # domain table columns (0-indexed after whitespace split):
     #  0: target (ORF) name, 3: query (KO profile) name,
     #  6: full-sequence E-value,  7: full-sequence score
@@ -111,9 +115,8 @@ def write_best_hits(domtblout, annotation_table):
                 best[orf_id] = (ko_id, score, evalue)
 
     with open(annotation_table, "w") as out:
-        out.write("orf_id\tko_id\tscore\tevalue\n")
         for orf_id, (ko_id, score, evalue) in sorted(best.items()):
-            out.write(f"{orf_id}\t{ko_id}\t{score:.2f}\t{evalue:.2e}\n")
+            out.write(f"{args.sample_name}\t{args.sample_name}|{orf_id}\t{ko_id}\t{score:.2f}\t{evalue:.2e}\n")
 
 ###############################################################################
 # 3. Define the main function
@@ -224,7 +227,7 @@ def main() -> None:
     # 3.6. Write best-hit annotation table
     ###########################################################################
 
-    annotation_table = os.path.join(args.output_dir, "orfs_ko_annotations.tsv")
+    annotation_table = os.path.join(args.output_dir, f"{args.sample_name}_orf_fun_annot_workable.tsv")
 
     try:
         write_best_hits(domtblout, annotation_table)

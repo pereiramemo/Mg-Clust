@@ -1,4 +1,4 @@
-// ─────────────────────────────────────────────────────────────────────────────
+ // ─────────────────────────────────────────────────────────────────────────────
 // MODULE 3: concatenate all samples, filter ORFs, create MMseqs2 DB
 // Input:  all per-sample ORF FASTAs + coverage tables (collected)
 // Output: filtered ORF MMseqs2 DB + merged coverage tables
@@ -6,7 +6,7 @@
 
 process MODULE3 {
     container "ghcr.io/epereira/mg-clust/module-3:latest"
-    publishDir "${params.output_dir}/module3/",
+    publishDir "${params.output_dir}/",
                 mode: "copy",
                 enabled: params.full_output || params.stop_at_module == 3
 

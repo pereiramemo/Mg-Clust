@@ -9,6 +9,7 @@ where dependencies are available on PATH.
 - Runs mmseqs taxonomy against a GTDB database to assign taxonomy to each contig
 - Exports the per-contig taxonomy assignments as a TSV file
 - Generates a Kraken-style taxonomy report
+- Maps ORF IDs to contig-level taxonomy via a left join on the BED file
 """
 
 ###############################################################################
@@ -43,6 +44,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--contigs", dest="contigs", required=True,
         help="input contigs fasta file (nucleotide sequences)")
 
+    parser.add_argument("--bed_file", dest="bed_file", required=True,
+        help="ORF BED file from module 2 (*_orfs.bed); used to map ORF IDs to contig taxonomy")
+
     parser.add_argument("--gtdb", dest="gtdb", default=GTDB_DEFAULT,
         help=f"path to the MMseqs2 GTDB taxonomy database (default: {GTDB_DEFAULT})")
 
@@ -55,6 +59,9 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--tax_lineage", dest="tax_lineage", type=int, default=1,
         help="include full lineage in TSV output (1=yes, 0=no; default: 1)")
+
+    parser.add_argument("--sample_name", dest="sample_name", required=True,
+        help="sample name used to name the files")
 
     parser.add_argument("--nslots", dest="nslots", type=int, default=4,
         help="number of threads used (default: 4)")
@@ -81,6 +88,7 @@ def main() -> None:
     ###########################################################################
 
     check_file(args.contigs, "contigs fasta file")
+    check_file(args.bed_file, "ORF BED file")
 
     ###########################################################################
     # 3.2. Check GTDB database; download if absent
@@ -205,7 +213,7 @@ def main() -> None:
     # 3.7. Export taxonomy assignments to TSV
     ###########################################################################
 
-    tax_tsv = os.path.join(args.output_dir, "contigs_tax.tsv")
+    tax_tsv = os.path.join(args.output_dir, f"{args.sample_name}_contig_tax_annot.tsv")
 
     try:
         run(
@@ -225,7 +233,7 @@ def main() -> None:
     # 3.8. Generate Kraken-style taxonomy report
     ###########################################################################
 
-    tax_report = os.path.join(args.output_dir, "contigs_tax_report.txt")
+    tax_report = os.path.join(args.output_dir, f"{args.sample_name}_contig_tax_report.txt")
 
     try:
         run(
@@ -239,6 +247,40 @@ def main() -> None:
         )
     except subprocess.CalledProcessError:
         print("mmseqs taxonomyreport failed", file=sys.stderr)
+        sys.exit(1)
+
+    ###########################################################################
+    # 3.9. Map ORF IDs to contig-level taxonomy
+    ###########################################################################
+
+    # mmseqs createtsv output columns (0-indexed): contig_id, taxid, rank, name[, lineage]
+    tax_map = {}
+    try:
+        with open(tax_tsv, "r", encoding="utf-8") as fh:
+            for line in fh:
+                parts = line.rstrip("\n").split("\t")
+                if parts:
+                    tax_map[parts[0]] = parts[1:]  # contig_id -> [taxid, rank, name, ...]
+    except Exception as exc:
+        print(f"reading taxonomy TSV failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    orf_tax_tsv = os.path.join(args.output_dir, f"{args.sample_name}_orf_tax_annot_workable.tsv")
+
+    try:
+        with open(args.bed_file, "r", encoding="utf-8") as bed_fh, \
+             open(orf_tax_tsv, "w", encoding="utf-8") as out_fh:
+            for line in bed_fh:
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) < 4:
+                    continue
+                contig_id = parts[0]
+                orf_id    = parts[4]
+                # Left join: fill with empty strings when contig has no taxonomy hit
+                tax_fields = (tax_map.get(contig_id, []) + ["", "", "", ""])
+                out_fh.write(f"{args.sample_name}\t{args.sample_name}|{orf_id}\t" + "\t".join(tax_fields) + "\n")
+    except Exception as exc:
+        print(f"mapping ORFs to taxonomy failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
     print("mg-clust_module-5.py exited successfully")

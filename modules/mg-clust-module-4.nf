@@ -2,6 +2,7 @@
 // MODULE 4: cluster ORFs + generate abundance tables
 // Input:  MMseqs2 DB + merged coverage tables
 // Output: per-cluster abundance tables
+// Note:  orf_filt_db is a literal prefix — Nextflow stages all DB companion files under this name
 // ─────────────────────────────────────────────────────────────────────────────
 
 process MODULE4 {
@@ -15,7 +16,9 @@ process MODULE4 {
     path(concat_readscov_table)
 
     output:
-    path("module4")
+    path("module4"),                                            emit: module4_dir
+    path("module4/orfs_clust_id*_meancov_workable.tsv"),       emit: meancov_workable
+    path("module4/orfs_clust_id*_readscov_workable.tsv"),      emit: readscov_workable
 
     script:
     """
