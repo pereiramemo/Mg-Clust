@@ -1,6 +1,6 @@
 FROM mambaorg/micromamba:1.5.10-noble
 
-COPY --chown=$MAMBA_USER:$MAMBA_USER docker/resources/requirements-module-3.yml /tmp/conda.yml
+COPY --chown=$MAMBA_USER:$MAMBA_USER docker/resources/requirements-module-3-4.yml /tmp/conda.yml
 RUN micromamba install -y -n base -f /tmp/conda.yml \
     && micromamba install -y -n base conda-forge::procps-ng \
     && micromamba env export --name base --explicit > environment.lock \
