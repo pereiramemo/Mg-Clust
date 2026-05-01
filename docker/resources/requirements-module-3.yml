@@ -1,0 +1,10 @@
+name: mg-clust-module-3
+channels:
+  - agbiome
+  - bioconda
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - bbtools=37.62
+  - mmseqs2=18.8cc5c
+  - pandas=3.0.1

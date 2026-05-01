@@ -1,0 +1,7 @@
+name: mg-clust-module-4
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - mmseqs2=18.8cc5c

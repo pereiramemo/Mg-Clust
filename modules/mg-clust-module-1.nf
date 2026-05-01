@@ -6,10 +6,10 @@
 
 process MODULE1 {
 
-    container "ghcr.io/epereira/mg-clust/module-1:latest"
-    publishDir "${params.output_dir}/module1/",
-                mode: "copy",
-                enabled: params.full_output || params.stop_at_module == 1
+    container "ghcr.io/epereira/mg-clust/${task.process.toLowerCase().replaceFirst('module', 'module-')}:latest"
+    publishDir "${params.output_dir}/${task.process.toLowerCase().replaceFirst('module', 'module-')}/",
+           mode: "copy",
+           enabled: params.full_output || params.stop_at_module == 1            
 
     tag "${sample_name}"
     

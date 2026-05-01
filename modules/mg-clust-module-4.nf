@@ -1,33 +1,36 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// MODULE 5: Functional annotation of ORFs against KO HMMs using pyHMMER
-// Input:  ORF protein sequences from module 2 (per sample)
-// Output: per-ORF functional annotations
+// MODULE 4: Taxonomic annotation of contigs against GTDB using MMseqs2
+// Input:  contig sequences from module 1 (per sample)
+// Output: per-contig taxonomy annotations
 // ─────────────────────────────────────────────────────────────────────────────
 
-process MODULE5 {
-
+process MODULE4 {
+    
     container "ghcr.io/epereira/mg-clust/${task.process.toLowerCase().replaceFirst('module', 'module-')}:latest"
     publishDir "${params.output_dir}/${task.process.toLowerCase().replaceFirst('module', 'module-')}/",
            mode: "copy",
-           enabled: params.full_output || params.stop_at_module == 5         
+           enabled: params.full_output || params.stop_at_module == 4           
+
 
     tag "${sample_name}"
 
     input:
-    tuple val(sample_name), path(orfs_faa)
+    tuple val(sample_name), path(assembly), path(orf_bed)
 
     output:
     path("${sample_name}"),                                                           emit: sample_dir
-    path("${sample_name}/${sample_name}_orf_fun_annot_workable.tsv"),                 emit: fun_workable
+    path("${sample_name}/${sample_name}_orf_tax_annot_workable.tsv"),                 emit: tax_workable
 
     script:
     """
     mg-clust-module-5.py \
-        --orfs_faa      ${orfs_faa} \
-        --hmm_db        ${params.hmm_db} \
+        --contigs       ${assembly} \
+        --bed_file      ${orf_bed} \
+        --gtdb          ${params.gtdb} \
         --sample_name   ${sample_name} \
-        --evalue_thres  ${params.evalue_thres} \
-        ${params.cut_ga ? '--cut_ga' : '--no-cut_ga'} \
+        --lca_mode      ${params.lca_mode} \
+        --sensitivity   ${params.sensitivity} \
+        --tax_lineage   ${params.tax_lineage} \
         --nslots        ${params.nslots} \
         --output_dir    ${sample_name} \
         --overwrite
