@@ -1,5 +1,5 @@
 
-![MG-Clust workflow](./figures/MG-Clust_logo.png)
+![MG-Clust logo](./figures/Mg-Clust_logo.png)
 ## Comprehensive characterization of functional compositional structure: Identifying and clustering ORF sequences from metagenomic data into Operational Protein Units
 
 [![DOI](https://zenodo.org/badge/521037888.svg)](https://doi.org/10.5281/zenodo.19493771)
