@@ -26,7 +26,6 @@ def run(cmd: List[str], stdout_path: Optional[str] = None) -> None:
     except FileNotFoundError as exc:
         print(f"Command not found: {cmd[0]} ({exc})", file=sys.stderr)
         sys.exit(1)
-
     if proc.returncode != 0:
         raise subprocess.CalledProcessError(proc.returncode, cmd)
 

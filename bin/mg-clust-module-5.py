@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-mg-clust module 5: Taxonomic annotation of contigs.
+mg-clust module 5: Functional annotation of ORFs using pyHMMER.
 
 Assumes execution inside the conda environment "mg-clust-module-5" (or equivalent)
-where dependencies are available on PATH.
+where pyhmmer is importable.
 
-- Creates an MMseqs2 nucleotide sequence database from the input contigs fasta
-- Runs mmseqs taxonomy against a GTDB database to assign taxonomy to each contig
-- Exports the per-contig taxonomy assignments as a TSV file
-- Generates a Kraken-style taxonomy report
-- Maps ORF IDs to contig-level taxonomy via a left join on the BED file
+- Searches ORF protein sequences against a HMM database (default: KEGG KO profiles)
+- Uses per-model gathering thresholds if available (--cut_ga), otherwise applies an e-value threshold
+- Exports a domain table and a best-hit annotation table (one KO per ORF)
 """
 
 ###############################################################################
@@ -17,15 +15,19 @@ where dependencies are available on PATH.
 ###############################################################################
 
 import argparse
+import glob
+import os
 import shutil
-import sys, os
-import subprocess
+import sys
+import tarfile
+import urllib.request
+import pyhmmer
+
 sys.path.insert(0, os.path.dirname(__file__))
-from utils import run, check_tools, check_file
+from utils import check_file
 
-mmseqs = "mmseqs"
-
-GTDB_DEFAULT = os.path.join(os.path.expanduser("~"), ".mg-clust", "db", "gtdb", "gtdb")
+KO_DEFAULT = os.path.join(os.path.expanduser("~"), ".mg-clust", "db", "ko", "ko_profiles.hmm")
+KO_PROFILES_URL = "https://www.genome.jp/ftp/db/kofam/profiles.tar.gz"
 
 ###############################################################################
 # 2. Define utility functions
@@ -37,34 +39,29 @@ GTDB_DEFAULT = os.path.join(os.path.expanduser("~"), ".mg-clust", "db", "gtdb", 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="mg-clust module 5", add_help=False)
+        description=f"{os.path.basename(__file__)}: Functional annotation of ORFs using pyHMMER", 
+        add_help=False)
 
     parser.add_argument("--help", action="help", help="print this help")
 
-    parser.add_argument("--contigs", dest="contigs", required=True,
-        help="input contigs fasta file (nucleotide sequences)")
+    parser.add_argument("--orfs_faa", dest="orfs_faa", required=True,
+        help="input ORF protein sequences (FASTA)")
 
-    parser.add_argument("--bed_file", dest="bed_file", required=True,
-        help="ORF BED file from module 2 (*_orfs.bed); used to map ORF IDs to contig taxonomy")
+    parser.add_argument("--hmm_db", dest="hmm_db", default=KO_DEFAULT,
+        help=f"path to HMM database (default: KO profiles at {KO_DEFAULT})")
 
-    parser.add_argument("--gtdb", dest="gtdb", default=GTDB_DEFAULT,
-        help=f"path to the MMseqs2 GTDB taxonomy database (default: {GTDB_DEFAULT})")
+    parser.add_argument("--evalue_thres", dest="evalue_thres", type=float, default=1e-3,
+        help="e-value threshold for hmmsearch (default: 1e-3; ignored when --cut_ga is set)")
 
-    parser.add_argument("--lca_mode", dest="lca_mode", type=int, default=3,
-        help="LCA mode passed to mmseqs taxonomy: 1=single-hit, 2=LCA of best hits, "
-             "3=top-hit with LCA fallback (default: 3)")
-
-    parser.add_argument("--sensitivity", dest="sensitivity", type=float, default=4.0,
-        help="sensitivity passed as -s to mmseqs taxonomy (default: 4.0)")
-
-    parser.add_argument("--tax_lineage", dest="tax_lineage", type=int, default=1,
-        help="include full lineage in TSV output (1=yes, 0=no; default: 1)")
+    parser.add_argument("--cut_ga", dest="cut_ga",
+        action=argparse.BooleanOptionalAction, default=False,
+        help="use per-model gathering thresholds (default: False; use --cut_ga to enable)")
 
     parser.add_argument("--sample_name", dest="sample_name", required=True,
         help="sample name used to name the files")
 
     parser.add_argument("--nslots", dest="nslots", type=int, default=4,
-        help="number of threads used (default: 4)")
+        help="number of threads (default: 4)")
 
     parser.add_argument("--output_dir", dest="output_dir", required=True,
         help="directory to output generated data")
@@ -75,61 +72,114 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 ###############################################################################
+# 2.2 Run pyhmmer hmmsearch and write domain table
+###############################################################################
+
+def run_hmmsearch(hmm_db, orfs_faa, domtblout, evalue_thres, cut_ga, nslots):
+    with pyhmmer.plan7.HMMFile(hmm_db) as hmms:
+        with pyhmmer.easel.SequenceFile(orfs_faa, digital=True) as seqs:
+            with open(domtblout, "wb") as out:
+                if cut_ga:
+                    # domE acts as fallback for profiles without GA thresholds
+                    for hits in pyhmmer.hmmer.hmmsearch(
+                        hmms, seqs, domE=evalue_thres, bit_cutoffs="gathering", cpus=nslots
+                    ):
+                        hits.write(out, format="domains", header=False)
+                else:
+                    for hits in pyhmmer.hmmer.hmmsearch(
+                        hmms, seqs, domE=evalue_thres, cpus=nslots
+                    ):
+                        hits.write(out, format="domains", header=False)
+
+###############################################################################
+# 2.3 Parse domain table and write best-hit annotation table
+###############################################################################
+
+def write_best_hits(domtblout, annotation_table):
+    args = parse_args()
+    # domain table columns (0-indexed after whitespace split):
+    #  0: target (ORF) name, 3: query (KO profile) name,
+    #  6: full-sequence E-value,  7: full-sequence score
+    best = {}  # orf_id -> (ko_id, score, evalue)
+    with open(domtblout, "rb") as fh:
+        for line in fh:
+            if line.startswith(b"#"):
+                continue
+            cols = line.split()
+            if len(cols) < 8:
+                continue
+            orf_id = cols[0].decode()
+            ko_id  = cols[3].decode()
+            evalue = float(cols[6])
+            score  = float(cols[7])
+            if orf_id not in best or score > best[orf_id][1]:
+                best[orf_id] = (ko_id, score, evalue)
+
+    with open(annotation_table, "w") as out:
+        for orf_id, (ko_id, score, evalue) in sorted(best.items()):
+            out.write(f"{orf_id}\t{ko_id}\t{score:.2f}\t{evalue:.2e}\n")
+
+###############################################################################
 # 3. Define the main function
 ###############################################################################
 
 def main() -> None:
-
-    check_tools([mmseqs])
     args = parse_args()
 
     ###########################################################################
     # 3.1. Check mandatory files
     ###########################################################################
 
-    check_file(args.contigs, "contigs fasta file")
-    check_file(args.bed_file, "ORF BED file")
+    check_file(args.orfs_faa, "ORF protein FASTA file")
 
     ###########################################################################
-    # 3.2. Check GTDB database; download if absent
+    # 3.2. Check KO HMM database; download if absent
     ###########################################################################
 
-    # A valid mmseqs2 database always has a companion .dbtype file.
-    # If it is missing, download the GTDB database via mmseqs databases.
-    if not os.path.isfile(args.gtdb + ".dbtype"):
-        print(f"GTDB database not found at {args.gtdb}; downloading now ...")
-
-        gtdb_dir = os.path.dirname(args.gtdb)
+    if not os.path.isfile(args.hmm_db):
+        print(f"HMM database not found at {args.hmm_db}; downloading KO profiles ...")
+        ko_dir = os.path.dirname(args.hmm_db)
         try:
-            os.makedirs(gtdb_dir, exist_ok=True)
+            os.makedirs(ko_dir, exist_ok=True)
         except Exception:
-            print(f"mkdir {gtdb_dir} failed", file=sys.stderr)
+            print(f"mkdir {ko_dir} failed", file=sys.stderr)
             sys.exit(1)
 
-        download_tmp = os.path.join(gtdb_dir, "gtdb_download_tmp")
+        archive = os.path.join(ko_dir, "profiles.tar.gz")
         try:
-            run(
-                [
-                    mmseqs,
-                    "databases",
-                    "GTDB",
-                    args.gtdb,
-                    download_tmp,
-                    "--threads", str(args.nslots)
-                ]
-            )
-        except subprocess.CalledProcessError:
-            print("mmseqs databases GTDB download failed", file=sys.stderr)
+            print(f"Downloading KO profiles from {KO_PROFILES_URL} ...")
+            urllib.request.urlretrieve(KO_PROFILES_URL, archive)
+        except Exception as exc:
+            print(f"Download of KO profiles failed: {exc}", file=sys.stderr)
             sys.exit(1)
 
-        if os.path.isdir(download_tmp):
-            try:
-                shutil.rmtree(download_tmp)
-            except Exception:
-                print(f"rm -r {download_tmp} failed", file=sys.stderr)
-                sys.exit(1)
+        try:
+            print("Extracting profiles ...")
+            with tarfile.open(archive) as tar:
+                tar.extractall(ko_dir)
+        except Exception as exc:
+            print(f"Extraction failed: {exc}", file=sys.stderr)
+            sys.exit(1)
 
-        print("GTDB database download complete.")
+        profiles_dir = os.path.join(ko_dir, "profiles")
+        hmm_files = sorted(glob.glob(os.path.join(profiles_dir, "*.hmm")))
+        if not hmm_files:
+            print("No .hmm files found after extraction", file=sys.stderr)
+            sys.exit(1)
+
+        try:
+            print(f"Concatenating {len(hmm_files)} HMM profiles into {args.hmm_db} ...")
+            with open(args.hmm_db, "wb") as out:
+                for hmm_file in hmm_files:
+                    with open(hmm_file, "rb") as f:
+                        out.write(f.read())
+        except Exception as exc:
+            print(f"Concatenation of HMM profiles failed: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+        os.remove(archive)
+        shutil.rmtree(profiles_dir)
+        print("KO HMM database ready.")
 
     ###########################################################################
     # 3.3. Check output directory
@@ -156,134 +206,37 @@ def main() -> None:
         sys.exit(1)
 
     ###########################################################################
-    # 3.5. Create MMseqs2 nucleotide database from contigs
+    # 3.5. Run hmmsearch
     ###########################################################################
 
-    contigs_db = os.path.join(args.output_dir, "contigs_db")
+    domtblout = os.path.join(args.output_dir, "orfs_ko_domtblout.txt")
 
     try:
-        run(
-            [
-                mmseqs,
-                "createdb",
-                args.contigs,
-                contigs_db,
-                "--dbtype", "2"  # 2 = nucleotide
-            ]
+        run_hmmsearch(
+            hmm_db=args.hmm_db,
+            orfs_faa=args.orfs_faa,
+            domtblout=domtblout,
+            evalue_thres=args.evalue_thres,
+            cut_ga=args.cut_ga,
+            nslots=args.nslots,
         )
-    except subprocess.CalledProcessError:
-        print("mmseqs createdb failed", file=sys.stderr)
-        sys.exit(1)
-
-    ###########################################################################
-    # 3.6. Run mmseqs taxonomy against GTDB
-    ###########################################################################
-
-    tax_db = os.path.join(args.output_dir, "contigs_tax_db")
-    tmp_dir = os.path.join(args.output_dir, "tmp")
-
-    try:
-        run(
-            [
-                mmseqs,
-                "taxonomy",
-                contigs_db,
-                args.gtdb,
-                tax_db,
-                tmp_dir,
-                "--threads", str(args.nslots),
-                "-s", str(args.sensitivity),
-                "--lca-mode", str(args.lca_mode),
-                "--tax-lineage", str(args.tax_lineage)
-            ]
-        )
-    except subprocess.CalledProcessError:
-        print("mmseqs taxonomy failed", file=sys.stderr)
-        sys.exit(1)
-
-    # Remove tmp directory
-    if os.path.isdir(tmp_dir):
-        try:
-            shutil.rmtree(tmp_dir)
-        except Exception:
-            print(f"rm -r {tmp_dir} failed", file=sys.stderr)
-            sys.exit(1)
-
-    ###########################################################################
-    # 3.7. Export taxonomy assignments to TSV
-    ###########################################################################
-
-    tax_tsv = os.path.join(args.output_dir, f"{args.sample_name}_contig_tax_annot.tsv")
-
-    try:
-        run(
-            [
-                mmseqs,
-                "createtsv",
-                contigs_db,
-                tax_db,
-                tax_tsv
-            ]
-        )
-    except subprocess.CalledProcessError:
-        print("mmseqs createtsv failed", file=sys.stderr)
-        sys.exit(1)
-
-    ###########################################################################
-    # 3.8. Generate Kraken-style taxonomy report
-    ###########################################################################
-
-    tax_report = os.path.join(args.output_dir, f"{args.sample_name}_contig_tax_report.txt")
-
-    try:
-        run(
-            [
-                mmseqs,
-                "taxonomyreport",
-                args.gtdb,
-                tax_db,
-                tax_report
-            ]
-        )
-    except subprocess.CalledProcessError:
-        print("mmseqs taxonomyreport failed", file=sys.stderr)
-        sys.exit(1)
-
-    ###########################################################################
-    # 3.9. Map ORF IDs to contig-level taxonomy
-    ###########################################################################
-
-    # mmseqs createtsv output columns (0-indexed): contig_id, taxid, rank, name[, lineage]
-    tax_map = {}
-    try:
-        with open(tax_tsv, "r", encoding="utf-8") as fh:
-            for line in fh:
-                parts = line.rstrip("\n").split("\t")
-                if parts:
-                    tax_map[parts[0]] = parts[1:]  # contig_id -> [taxid, rank, name, ...]
     except Exception as exc:
-        print(f"reading taxonomy TSV failed: {exc}", file=sys.stderr)
+        print(f"hmmsearch failed: {exc}", file=sys.stderr)
         sys.exit(1)
+        
+    ###########################################################################
+    # 3.6. Write best-hit annotation table
+    ###########################################################################
 
-    orf_tax_tsv = os.path.join(args.output_dir, f"{args.sample_name}_orf_tax_annot_workable.tsv")
+    annotation_table = os.path.join(args.output_dir, f"{args.sample_name}_orf_fun_annot_workable.tsv")
 
     try:
-        with open(args.bed_file, "r", encoding="utf-8") as bed_fh, \
-             open(orf_tax_tsv, "w", encoding="utf-8") as out_fh:
-            for line in bed_fh:
-                parts = line.rstrip("\n").split("\t")
-                if len(parts) < 4:
-                    continue
-                contig_id = parts[0]
-                orf_id    = parts[4]
-                # Left join: fill with empty strings when contig has no taxonomy hit
-                tax_fields = (tax_map.get(contig_id, []) + ["", "", "", ""])
-                out_fh.write(f"{args.sample_name}\t{args.sample_name}|{orf_id}\t" + "\t".join(tax_fields) + "\n")
+        write_best_hits(domtblout, annotation_table)
     except Exception as exc:
-        print(f"mapping ORFs to taxonomy failed: {exc}", file=sys.stderr)
+        print(f"Writing annotation table failed: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    print("mg-clust_module-5.py exited successfully")
+    print(f"{os.path.basename(__file__)} exited successfully")
     sys.exit(0)
 
 ###########################################################################

@@ -40,7 +40,8 @@ picard = "picard"  # use picard wrapper instead of java -jar
 def parse_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(
-        description="mg-clust module 1", add_help=False)
+        description=f"{os.path.basename(__file__)}: de novo assembly and read mapping", 
+        add_help=False)
 
     parser.add_argument("--help", action="help", help="print this help")
     
@@ -168,7 +169,29 @@ def main() -> None:
         sys.exit(0)
 
     ###########################################################################
-    # 3.6. Map short reads
+    # 3.6. Add the sample name to the contig headers to ensure uniqueness across samples (e.g. for downstream clustering)
+    ###########################################################################
+
+    tmp_assembly_file = assembly_file + ".tmp"
+    try:
+        with open(assembly_file, "r", encoding="utf-8") as in_fh, open(tmp_assembly_file, "w", encoding="utf-8") as out_fh:
+            for line in in_fh:
+                if line.startswith(">"):
+                    header = line[1:].rstrip("\n")
+                    if not header.startswith(f"{args.sample_name}|"):
+                        header = f"{args.sample_name}|{header}"
+                    out_fh.write(f">{header}\n")
+                else:
+                    out_fh.write(line)
+        os.replace(tmp_assembly_file, assembly_file)
+    except Exception as e:
+        if os.path.exists(tmp_assembly_file):
+            os.remove(tmp_assembly_file)
+        print(f"Failed to rewrite contig headers with sample name: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    ###########################################################################
+    # 3.7. Map short reads
     ###########################################################################
 
     # bwa index
@@ -248,7 +271,7 @@ def main() -> None:
             sys.exit(1)
 
         #######################################################################
-        # 3.7. Define cleanup paths including the temporary directory if markdup was run
+        # 3.8. Define cleanup paths including the temporary directory if markdup was run
         #######################################################################
           
         cleanup_paths = [sam_path, bam_path, tmp_dir]
@@ -256,7 +279,7 @@ def main() -> None:
         cleanup_paths = [sam_path, bam_path]
 
     ########################################################################### 
-    # 3.8. Clean
+    # 3.9. Clean
     ###########################################################################
 
     try:
@@ -277,7 +300,7 @@ def main() -> None:
             print("removing assembly intermediate files failed", file=sys.stderr)
             sys.exit(1)
 
-    print("mg-clust_module-1.py exited successfully")
+    print(f"{os.path.basename(__file__)} exited successfully")
     sys.exit(0)
 
 ########################################################################### 

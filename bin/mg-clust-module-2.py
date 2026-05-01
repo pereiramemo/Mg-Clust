@@ -39,7 +39,8 @@ bedtools = "bedtools"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="mg-clust module 2", add_help=False
+        description=f"{os.path.basename(__file__)}: ORF prediction and coverage estimation", 
+        add_help=False
     )
 
     parser.add_argument("--help", action="help", help="print this help")
@@ -200,7 +201,7 @@ def main() -> None:
         print("bedtools to compute mean coverage failed", file=sys.stderr)
         sys.exit(1)
 
-    print("mg-clust_module-2.py exited successfully")
+    print(f"{os.path.basename(__file__)} exited successfully")
     sys.exit(0)
 
 ###########################################################################
