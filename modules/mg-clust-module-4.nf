@@ -23,7 +23,7 @@ process MODULE4 {
 
     script:
     """
-    mg-clust-module-5.py \
+    mg-clust-module-4.py \
         --contigs       ${assembly} \
         --bed_file      ${orf_bed} \
         --gtdb          ${params.gtdb} \

@@ -65,6 +65,42 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 ###############################################################################
+# 2.2 Concatenate TSV files with basic validation
+###############################################################################
+
+def concat_workable_tsv(input_files: list[str], output_file: str, label: str) -> None:
+    non_empty_lines = 0
+    tabbed_lines = 0
+
+    try:
+        with open(output_file, "w", encoding="utf-8") as out_fh:
+            for in_path in input_files:
+                with open(in_path, "r", encoding="utf-8") as in_fh:
+                    for raw_line in in_fh:
+                        line = raw_line.rstrip("\n")
+                        if not line.strip():
+                            continue
+                        non_empty_lines += 1
+                        if "\t" in line:
+                            tabbed_lines += 1
+                        out_fh.write(line + "\n")
+    except Exception as exc:
+        print(f"concatenating {label} files failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    if non_empty_lines == 0:
+        print(f"{label} concatenation produced an empty file: {output_file}", file=sys.stderr)
+        sys.exit(1)
+
+    if tabbed_lines == 0:
+        print(
+            f"{label} concatenation produced no tab-delimited lines: {output_file}; "
+            "input files may be malformed or not TSV",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+###############################################################################
 # 3. Define the main function
 ###############################################################################
 
@@ -113,15 +149,7 @@ def main() -> None:
 
     orf_tax_annot = os.path.join(args.output_dir, "orf_tax_annot_workable.tsv")
 
-    try:
-        with open(orf_tax_annot, "w", encoding="utf-8") as out_fh:
-            for tax_file in args.tax_files:
-                with open(tax_file, "r", encoding="utf-8") as in_fh:
-                    for line in in_fh:
-                        out_fh.write(line)
-    except Exception as exc:
-        print(f"concatenating taxonomy files failed: {exc}", file=sys.stderr)
-        sys.exit(1)
+    concat_workable_tsv(args.tax_files, orf_tax_annot, "taxonomy annotation")
 
     ###########################################################################
     # 3.5. Concatenate function annotation files
@@ -129,15 +157,7 @@ def main() -> None:
 
     orf_fun_annot = os.path.join(args.output_dir, "orf_fun_annot_workable.tsv")
 
-    try:
-        with open(orf_fun_annot, "w", encoding="utf-8") as out_fh:
-            for fun_file in args.fun_files:
-                with open(fun_file, "r", encoding="utf-8") as in_fh:
-                    for line in in_fh:
-                        out_fh.write(line)
-    except Exception as exc:
-        print(f"concatenating function files failed: {exc}", file=sys.stderr)
-        sys.exit(1)
+    concat_workable_tsv(args.fun_files, orf_fun_annot, "function annotation")
 
     ###########################################################################
     # 3.6. Merge tables with DuckDB
@@ -154,30 +174,93 @@ def main() -> None:
 
         con.execute("""
             CREATE TABLE meancov AS
-            SELECT column0 AS sample_name, column1 AS clust_id, column2::DOUBLE AS abund
-            FROM read_csv(?, delim='\t', header=false)
+            SELECT
+                TRIM(column0) AS sample_name,
+                TRIM(column1) AS clust_id,
+                TRY_CAST(column2 AS DOUBLE) AS abund
+            FROM read_csv(
+                ?,
+                delim='\t',
+                header=false,
+                auto_detect=false,
+                strict_mode=false,
+                null_padding=true,
+                ignore_errors=true,
+                columns={'column0':'VARCHAR','column1':'VARCHAR','column2':'VARCHAR'}
+            )
+            WHERE column0 IS NOT NULL AND column1 IS NOT NULL
         """, [args.meancov_table])
 
         con.execute("""
             CREATE TABLE readscov AS
-            SELECT column0 AS sample_name, column1 AS clust_id, column2::DOUBLE AS abund
-            FROM read_csv(?, delim='\t', header=false)
+            SELECT
+                TRIM(column0) AS sample_name,
+                TRIM(column1) AS clust_id,
+                TRY_CAST(column2 AS DOUBLE) AS abund
+            FROM read_csv(
+                ?,
+                delim='\t',
+                header=false,
+                auto_detect=false,
+                strict_mode=false,
+                null_padding=true,
+                ignore_errors=true,
+                columns={'column0':'VARCHAR','column1':'VARCHAR','column2':'VARCHAR'}
+            )
+            WHERE column0 IS NOT NULL AND column1 IS NOT NULL
         """, [args.readscov_table])
 
         # tax columns: sample_name, orf_id, taxid, rank, name, lineage
         con.execute("""
             CREATE TABLE tax AS
-            SELECT column0 AS sample_name, column1 AS orf_id,
+            SELECT TRIM(column0) AS sample_name, TRIM(column1) AS orf_id,
                    column2 AS taxid, column3 AS rank, column4 AS name, column5 AS lineage
-            FROM read_csv(?, delim='\t', header=false)
+            FROM read_csv(
+                ?,
+                delim='\t',
+                header=false,
+                auto_detect=false,
+                strict_mode=false,
+                null_padding=true,
+                ignore_errors=true,
+                columns={
+                    'column0':'VARCHAR',
+                    'column1':'VARCHAR',
+                    'column2':'VARCHAR',
+                    'column3':'VARCHAR',
+                    'column4':'VARCHAR',
+                    'column5':'VARCHAR'
+                }
+            )
+            WHERE column1 IS NOT NULL
         """, [orf_tax_annot])
 
         # fun columns: sample_name, orf_id, ko_id, score, evalue
         con.execute("""
             CREATE TABLE fun AS
-            SELECT column0 AS sample_name, column1 AS orf_id,
-                   column2 AS ko_id, column3::DOUBLE AS score, column4::DOUBLE AS evalue
-            FROM read_csv(?, delim='\t', header=false)
+            SELECT
+                TRIM(column0) AS sample_name,
+                TRIM(column1) AS orf_id,
+                column2 AS ko_id,
+                TRY_CAST(column3 AS DOUBLE) AS score,
+                TRY_CAST(column4 AS DOUBLE) AS evalue
+            FROM read_csv(
+                ?,
+                delim='\t',
+                header=false,
+                auto_detect=false,
+                strict_mode=false,
+                null_padding=true,
+                ignore_errors=true,
+                columns={
+                    'column0':'VARCHAR',
+                    'column1':'VARCHAR',
+                    'column2':'VARCHAR',
+                    'column3':'VARCHAR',
+                    'column4':'VARCHAR'
+                }
+            )
+            WHERE column1 IS NOT NULL
         """, [orf_fun_annot])
 
         # Left join on clust_id = orf_id: taxonomy and function are looked up
